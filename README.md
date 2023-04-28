@@ -11,7 +11,7 @@ Para ello, el proyecto debe ser instalado como dependencia utilizando ssh o http
 
 ```javascript
 // importamos la librería
-const EmuladorComdasuar = require('comdasuar')
+const { EmuladorComdasuar } = require('comdasuar')
 
 // instanciamos un objeto de la clase EmuladorComdasuar
 const comdasuar = new EmuladorComdasuar()
@@ -19,7 +19,7 @@ const comdasuar = new EmuladorComdasuar()
 // cargamos una partitura escrita en nomenclatura de Asuar (AMS)
 comdasuar.nuevaPartituraAMS("j1 n 6b 3as 5e 4f 3ew d 5aw 4a g 6fs 4c")
 
-// imprimimos la partitura en formato AMS
+// imprimimos la partitura compilada en consola
 comdasuar.editSeq().print()
 ```
 
