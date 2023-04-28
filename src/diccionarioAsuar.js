@@ -139,12 +139,11 @@ class DiccionarioAsuar{
     alt2mc( amsalt ){
         return this.alt2mn(amsalt)*100;
     }
-
 }
-
-exports.DiccionarioAsuar = DiccionarioAsuar;
 
 /*
 const {DiccionarioAsuar} = require('./diccionarioAsuar.js');
 let AMS = new DiccionarioAsuar();
 */
+exports.DiccionarioAsuar = DiccionarioAsuar;
+
