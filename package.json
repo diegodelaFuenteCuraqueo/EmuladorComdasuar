@@ -1,0 +1,11 @@
+{
+  "name": "emuladorcomdasuar",
+  "version": "1.0.0",
+  "description": "Un Emulador de un Sistema para hacer música con un microcomputador COMDASUAR (originalmente creado por José Vicente Asuar en 1978)",
+  "main": "src/EmuladorComdasuar.js",
+  "scripts": {
+    "test": "node test/tester.js"
+  },
+  "author": "Diego de la Fuente Curaqueo",
+  "license": "ISC"
+}
