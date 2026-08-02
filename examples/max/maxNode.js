@@ -1,9 +1,10 @@
 const path = require('path');
 const Max = require('max-api');
 const fs  = require('fs');
-const Heuristicos = require('./Heuristicos.js');
+const Heuristicos = require('../../src/Heuristicos.js');
 
-const {EmuladorComdasuar} = require("./EmuladorComdasuar.js")
+const {EmuladorComdasuar} = require("../../src/EmuladorComdasuar.js")
+const Persistencia = require("../../src/Persistencia.js");
 let comdasuar = new EmuladorComdasuar();
 
 Max.addHandler("limpiarUmenus", (ruta) => {
@@ -52,12 +53,12 @@ Max.addHandler("reemplazarPartituraAMS", (partituraAMS) => {
 });
 
 Max.addHandler("loadJSON", (ruta)=>{
-    comdasuar.ADMIN.cargarArchivo(rutaOSX(ruta));
+    Persistencia.cargarAdmin(comdasuar.ADMIN, rutaOSX(ruta));
     actualizarUmenus();
 });
 
 Max.addHandler("saveJSON", (ruta) => {
-    comdasuar.ADMIN.exportarJSON(rutaOSX(ruta)+".json");
+    Persistencia.guardarAdmin(comdasuar.ADMIN, rutaOSX(ruta)+".json");
 });
 
 Max.addHandler("umenu_secuencias", (index) =>{
@@ -214,5 +215,5 @@ const setTextNombres = (banco,seq) => {
 
 //otras funciones para
 Max.addHandler("checkSeq", ()=>{
-    comdasuar.getSeq().print();
+    comdasuar.editSeq().print();
 })

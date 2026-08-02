@@ -4,15 +4,16 @@
 | Desarrollado por Diego de la Fuente Curaqueo                                    |
 | como parte del proyecto de recodificación del COMDASUAR original                |
 | creado por José Vicente Asuar durante los años 70'.                             |
-+=================================================================================*/
+ +=================================================================================*/
 
+const {log} = require('./util.js');
 
 /**Convierte código Asuar (AMS) en lista de alturas y duraciones
  * siguiendo la misma nomenclatura (sin hacer conversiones). */
 class AMSparser{
 
     constructor(){
-        console.log (" * AMSparser constructor * ")
+        log (" * AMSparser constructor * ")
 
         this.clear();
     }
@@ -56,7 +57,7 @@ class AMSparser{
      * Las duraciones deben indicar almenos 1 ritmo y su grupo irregular,
      * el 0 sirve para anular el grupo irregular anterior. No es necesario que cada ritmo tenga un 0.*/
     aplicarRedundancias(){
-        console.log("\nAPLICANDO REDUNDANCIAS - - - - - - - - - - - - - - - - - - - -");
+        log("\nAPLICANDO REDUNDANCIAS - - - - - - - - - - - - - - - - - - - -");
 
         let gruposIrregulares = "0357".split("");
         let grupoIrregular = "";
@@ -87,7 +88,7 @@ class AMSparser{
             }
             this.codigoPlano.duraciones.push(duracionConTodosLosDatos)
 
-            console.log(this.AMSalturas[i]+" "+this.AMSduraciones[i]+" => "+alturaConTodosLosDatos+" "+duracionConTodosLosDatos );
+            log(this.AMSalturas[i]+" "+this.AMSduraciones[i]+" => "+alturaConTodosLosDatos+" "+duracionConTodosLosDatos );
         }
 
     }
@@ -98,7 +99,7 @@ class AMSparser{
      *  J4, J5        =     MODOS DE REPETICIÓN
      *  J3, J6, J7    =     MODOS DE MODULACION DE NOTA (aun no implementado :c )   */
     compilar(){
-        console.log("========================== AMS PARSER ========================== ");
+        log("========================== AMS PARSER ========================== ");
         let modoInputActivo = 0;
         let ritmoConstanteJ1= "";
         let alturaConstanteJ2="";
@@ -107,13 +108,13 @@ class AMSparser{
         for(let i=0; i<this.listaDePalabras.length; i++){
 
             let codigoActual = this.listaDePalabras[i];
-            console.log("Indice "+i+" : \'"+codigoActual+"\'");
+            log("Indice "+i+" : \'"+codigoActual+"\'");
 
             //el elemento es un cambio de modo J..  ---------------------------------------------------------//
             if(codigoActual.includes("J")){
                 if(codigoActual[1]=="0" || codigoActual.includes("0")){  //J0 introducción normal (default)
                     this.aplicarRepeticionesJ4();   //agrega notas repetidas en caso de q J4 estuviera activo
-                    console.log("  CAMBIO DE MODO  : "+codigoActual);
+                    log("  CAMBIO DE MODO  : "+codigoActual);
                     modoInputActivo = 0;
                     continue;
 
@@ -121,14 +122,14 @@ class AMSparser{
                     this.aplicarRepeticionesJ4();   //agrega notas repetidas en caso de q J4 estuviera activo
                     modoInputActivo = 1;
                     ritmoConstanteJ1 = this.listaDePalabras[i+1];
-                    console.log("  CAMBIO DE MODO  : "+codigoActual+"\n  Ritmo constante : "+ritmoConstanteJ1+"\n (saltando siguiente)");
+                    log("  CAMBIO DE MODO  : "+codigoActual+"\n  Ritmo constante : "+ritmoConstanteJ1+"\n (saltando siguiente)");
                     i++; continue;
 
                 }else if(codigoActual[1]=="2"){     //J2 Altura constante -  -  -  -  -  -  -  -  -  -  -  -  -
                     this.aplicarRepeticionesJ4();   //agrega notas repetidas en caso de q J4 estuviera activo
                     modoInputActivo = 2;
                     alturaConstanteJ2 = this.listaDePalabras[i+1];
-                    console.log("  CAMBIO DE MODO   : "+codigoActual+"\n  Altura constante : "+alturaConstanteJ2+"\n (saltando siguiente)");
+                    log("  CAMBIO DE MODO   : "+codigoActual+"\n  Altura constante : "+alturaConstanteJ2+"\n (saltando siguiente)");
                     i++; continue;
 
                 }else if(codigoActual[1]=="3"){     //J3 Glissando (pendiente) -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -
@@ -137,7 +138,7 @@ class AMSparser{
                     this.J4.activo = true;
                     this.J4.repeticiones = parseInt(this.listaDePalabras[i+1]);
                     this.J4.seq = { alt : [], dur: [] };
-                    console.log("  CAMBIO DE MODO : "+codigoActual+"\n   Repeticiones "+this.J4.repeticiones+"\n (saltando siguiente)");
+                    log("  CAMBIO DE MODO : "+codigoActual+"\n   Repeticiones "+this.J4.repeticiones+"\n (saltando siguiente)");
                     i++; continue;
 
                 }else if(codigoActual[1]=="5"){     //J5 repite pasaje (desde/hasta)  -  -  -  -  -  -  -  -  -
@@ -147,7 +148,7 @@ class AMSparser{
                 }
             //el elemento es un cambio de tempo -------------------------------------------------------------//
             }else if(codigoActual.includes("=")){   //no debe llevar espacios (ej 'N=60')
-                console.log(" * Cambiando pulso: "+codigoActual);
+                log(" * Cambiando pulso: "+codigoActual);
 
                 let tmp = codigoActual.split("=");
                 this.tempo.figura = tmp[0];
@@ -169,7 +170,7 @@ class AMSparser{
                     this.AMSalturas.push(alturaConstanteJ2);
                     this.AMSduraciones.push( codigoActual == "/" ? this.AMSduraciones[this.AMSduraciones.length-1] : codigoActual);
                 }
-                console.log("Nueva Nota : Altura "+this.AMSalturas[this.AMSalturas.length-1]+", duración: "+this.AMSduraciones[this.AMSduraciones.length-1]);
+                log("Nueva Nota : Altura "+this.AMSalturas[this.AMSalturas.length-1]+", duración: "+this.AMSduraciones[this.AMSduraciones.length-1]);
 
                 if(this.J4.activo){     //el modo 4 está activo, vamos guardando las notas ingresadas
                     this.J4.seq.alt.push(this.AMSalturas[this.AMSalturas.length-1]);
@@ -186,7 +187,7 @@ class AMSparser{
     aplicarRepeticionesJ4(){
         if(this.J4.activo){
             this.J4.activo = false;
-            console.log("   * (MODO J4: Ingresando repetición del pasaje)")
+            log("   * (MODO J4: Ingresando repetición del pasaje)")
             for(let i = 1; i < this.J4.repeticiones ; i++){
                 this.AMSalturas = this.AMSalturas.concat(this.J4.seq.alt);
                 this.AMSduraciones= this.AMSduraciones.concat(this.J4.seq.dur);
@@ -200,12 +201,12 @@ class AMSparser{
     copiarPasajeJ5(desde,hasta){
         let J5desde = desde;
         let J5hasta = hasta;
-        console.log("CAMBIO DE MODO : J5\n  Repetir de "+J5desde+" a "+J5hasta +"\n (saltando siguiente)");
+        log("CAMBIO DE MODO : J5\n  Repetir de "+J5desde+" a "+J5hasta +"\n (saltando siguiente)");
 
         //insertamos repeticion
         let J5alts = this.AMSalturas.slice(J5desde,J5hasta);
         let J5durs = this.AMSduraciones.slice(J5desde,J5hasta);
-        console.log(" * (MODO J5: Ingresando repeticion de pasaje. "+J5alts.length+" eventos)")
+        log(" * (MODO J5: Ingresando repeticion de pasaje. "+J5alts.length+" eventos)")
 
         this.AMSalturas = this.AMSalturas.concat(J5alts);
         this.AMSduraciones = this.AMSduraciones.concat(J5durs);
@@ -235,6 +236,19 @@ class AMSparser{
      * @returns {Object} Retorna objeto tempo con sus parámetros.
      */
     getTempo(){ return this.tempo;}
+
+    /** API de alto nivel: carga, compila y entrega las secuencias planas y el tempo.
+     * @param {string} amsString Partitura en código Asuar (AMS).
+     * @returns {Object} { alturas: string[], duraciones: string[], tempo: Object } */
+    parse(amsString){
+        this.cargarPartitura(amsString);
+        this.compilar();
+        return {
+            alturas: this.codigoPlano.alturas,
+            duraciones: this.codigoPlano.duraciones,
+            tempo: this.tempo
+        };
+    }
 
 }
 

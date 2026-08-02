@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emulador COMDASUAR — Test manual</title>
+<style>
+  :root { --bg:#1e1e2e; --panel:#27273a; --borde:#3a3a52; --texto:#e6e6f0; --acento:#89b4fa; }
+  * { box-sizing:border-box; }
+  body { background:var(--bg); color:var(--texto); font-family:ui-monospace, Menlo, monospace; margin:0; padding:16px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  h2 { font-size:14px; margin:18px 0 8px; color:var(--acento); }
+  p.sub { margin:0 0 12px; opacity:.7; font-size:12px; }
+  textarea { width:100%; min-height:130px; background:#191926; color:var(--texto); border:1px solid var(--borde); border-radius:6px; padding:8px; font-family:inherit; font-size:13px; }
+  select, input, button { background:#191926; color:var(--texto); border:1px solid var(--borde); border-radius:6px; padding:6px 8px; font-family:inherit; font-size:13px; }
+  button { background:var(--acento); color:#1e1e2e; font-weight:bold; cursor:pointer; border:none; }
+  button:hover { filter:brightness(1.1); }
+  .fila { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; }
+  .panel { background:var(--panel); border:1px solid var(--borde); border-radius:8px; padding:12px; margin:12px 0; }
+  label { font-size:12px; opacity:.8; }
+  pre#info { background:#191926; padding:10px; border-radius:6px; overflow:auto; white-space:pre-wrap; margin:0; font-size:12px; }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  th, td { border:1px solid var(--borde); padding:3px 8px; text-align:left; }
+  th { background:#191926; }
+  .heuristicos .grupo { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center; }
+  .heuristicos input { width:90px; }
+</style>
+</head>
+<body>
+
+<h1>Emulador COMDASUAR — Test manual</h1>
+<p class="sub">Prueba interactiva de las propiedades básicas de la librería (parser AMS, secuencias, banco de secuencias y heurísticos).</p>
+
+<div class="fila">
+  <label><input type="checkbox" id="chkDebug"> Logs de depuración</label>
+  <button id="btnNuevoBanco">Nuevo banco</button>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">1. Partitura (código Asuar AMS)</h2>
+  <textarea id="partitura">j1 n 6b 3as 5e 4f 3ew d 5aw 4a g 6fs 4c</textarea>
+  <div class="fila">
+    <button id="btnAgregar">Agregar secuencia</button>
+    <button id="btnReemplazar">Reemplazar secuencia actual</button>
+  </div>
+
+  <h2>2. Selección</h2>
+  <div class="fila">
+    <label>Banco:</label>
+    <select id="bancoSel"></select>
+    <label>Secuencia:</label>
+    <select id="seqSel"></select>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">3. Propiedades de la secuencia seleccionada</h2>
+  <pre id="info">(sin secuencia)</pre>
+  <table id="notas">
+    <thead><tr><th>#</th><th>Altura</th><th>Ritmo</th><th>MIDI-note</th><th>MIDI-cent</th><th>Dur. (ms)</th><th>Inicio</th><th>Fin</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="panel heuristicos">
+  <h2 style="margin-top:0">4. Heurísticos (procesos sobre la secuencia seleccionada)</h2>
+
+  <div class="grupo">
+    <button data-h="transportar">Transportar</button>
+    <label>intervalo (mc):</label><input type="number" id="transportar_val" value="100">
+  </div>
+
+  <div class="grupo">
+    <button data-h="invertir">Invertir</button>
+    <label>eje (midi-note o mc):</label><input type="number" id="invertir_val" value="7200">
+  </div>
+
+  <div class="grupo">
+    <button data-h="expandirAlturas">Expandir alturas</button>
+    <label>eje:</label><input type="number" id="expandirAlturas_eje" value="7200">
+    <label>escala:</label><input type="number" id="expandirAlturas_esc" value="1.5" step="0.1">
+  </div>
+
+  <div class="grupo">
+    <button data-h="expandirDuraciones">Expandir duraciones</button>
+    <label>escala:</label><input type="number" id="expandirDuraciones_esc" value="1.5" step="0.1">
+  </div>
+
+  <div class="grupo">
+    <button data-h="retrogradarAlturas">Retrogradar alturas</button>
+    <button data-h="retrogradarDuraciones">Retrogradar duraciones</button>
+    <button data-h="desordenarAlturas">Desordenar alturas</button>
+    <button data-h="desordenarDuraciones">Desordenar duraciones</button>
+  </div>
+
+  <div class="grupo">
+    <label>Transmutar desde banco:</label>
+    <select id="transmuta_banco"></select>
+    <label>secuencia:</label>
+    <select id="transmuta_seq"></select>
+    <button data-h="transmutarAlturas">Transmutar alturas</button>
+    <button data-h="transmutarDuraciones">Transmutar duraciones</button>
+  </div>
+</div>
+
+<script src="./comdasuar.browser.js"></script>
+<script>
+"use strict";
+
+const comdasuar = new EmuladorComdasuar();
+
+function setInfo(texto){
+    document.getElementById('info').textContent = texto;
+}
+
+function refreshBancos(){
+    const sel = document.getElementById('bancoSel');
+    sel.innerHTML = '';
+    for (const etiqueta of comdasuar.ADMIN.getEtiquetasBancos()){
+        const [i, ...nombre] = etiqueta.split(' ');
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i + ' - ' + nombre.join(' ');
+        sel.appendChild(opt);
+    }
+    if (sel.options.length) sel.value = comdasuar.ADMIN.getBancoActualIndex();
+}
+
+function refreshSecuencias(){
+    const sel = document.getElementById('seqSel');
+    sel.innerHTML = '';
+    for (const etiqueta of comdasuar.ADMIN.getEtiquetasSecuencias()){
+        const [i, ...nombre] = etiqueta.split(' ');
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i + ' - ' + nombre.join(' ');
+        sel.appendChild(opt);
+    }
+    if (sel.options.length) sel.value = comdasuar.editBanco().getSecuenciaActualIndex();
+    refreshTransmutaOrigen();
+}
+
+function refreshTransmutaOrigen(){
+    const bSel = document.getElementById('transmuta_banco');
+    bSel.innerHTML = '';
+    comdasuar.ADMIN.bancos.forEach((b, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i + ' - ' + b.getNombre();
+        bSel.appendChild(opt);
+    });
+    const sSel = document.getElementById('transmuta_seq');
+    sSel.innerHTML = '';
+    const bi = parseInt(bSel.value || 0);
+    comdasuar.ADMIN.bancos[bi].secuencias.forEach((s, j) => {
+        const opt = document.createElement('option');
+        opt.value = j;
+        opt.textContent = j + ' - ' + s.getNombre();
+        sSel.appendChild(opt);
+    });
+}
+
+function showInfo(){
+    const seq = comdasuar.editSeq();
+    const out = [];
+    out.push("== Secuencia '" + seq.getNombre() + "' ==");
+    out.push('Índice (en banco) : ' + seq.getIndice());
+    out.push('Tempo             : ' + seq.tempo.figura + '=' + seq.tempo.pulsosPorMin + ' (pulso ' + seq.tempo.duracionPulso + ' ms)');
+    out.push('Duración total    : ' + (seq.getDuracionTotal()/1000).toFixed(3) + ' s  (' + seq.getDuracionTotal().toFixed(0) + ' ms)');
+    out.push('Nº de notas       : ' + seq.getNotas().length);
+    out.push('');
+    out.push('MIDIcents  : [' + seq.getMidicents().join(', ') + ']');
+    out.push('Duraciones : [' + seq.getDuraciones().map(d=>d.toFixed(1)).join(', ') + ']');
+    out.push('Inicios    : [' + seq.getInicios().map(d=>d.toFixed(1)).join(', ') + ']');
+    out.push('');
+    out.push('Código AMS : ' + (seq.codigoAMS || '(vacío)'));
+    setInfo(out.join('\n'));
+
+    const tbody = document.querySelector('#notas tbody');
+    tbody.innerHTML = '';
+    seq.getNotas().forEach((n, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + i + '</td>' +
+            '<td>' + n.getAMSalt() + '</td>' +
+            '<td>' + n.getAMSdur() + '</td>' +
+            '<td>' + n.getMidinote() + '</td>' +
+            '<td>' + n.getMidicent() + '</td>' +
+            '<td>' + n.getMS().toFixed(1) + '</td>' +
+            '<td>' + n.getInicio().toFixed(1) + '</td>' +
+            '<td>' + n.fin.toFixed(1) + '</td>';
+        tbody.appendChild(tr);
+    });
+}
+
+function refrescarTodo(){
+    refreshBancos();
+    refreshSecuencias();
+    showInfo();
+}
+
+// eventos
+document.getElementById('chkDebug').addEventListener('change', (e) => {
+    EmuladorComdasuar.setDebug(e.target.checked);
+});
+
+document.getElementById('btnNuevoBanco').addEventListener('click', () => {
+    comdasuar.nuevoBanco();
+    refrescarTodo();
+});
+
+document.getElementById('btnAgregar').addEventListener('click', () => {
+    const txt = document.getElementById('partitura').value.trim();
+    if (!txt) return;
+    comdasuar.nuevaPartituraAMS(txt);
+    refrescarTodo();
+});
+
+document.getElementById('btnReemplazar').addEventListener('click', () => {
+    const txt = document.getElementById('partitura').value.trim();
+    if (!txt) return;
+    comdasuar.reemplazarPartituraAMS(txt);
+    refrescarTodo();
+});
+
+document.getElementById('bancoSel').addEventListener('change', (e) => {
+    comdasuar.selBanco(parseInt(e.target.value));
+    refreshSecuencias();
+    showInfo();
+});
+
+document.getElementById('seqSel').addEventListener('change', (e) => {
+    comdasuar.selSeq(parseInt(e.target.value));
+    showInfo();
+});
+
+document.getElementById('transmuta_banco').addEventListener('change', refreshTransmutaOrigen);
+
+const val = (id) => parseFloat(document.getElementById(id).value);
+
+const handlers = {
+    transportar:        () => comdasuar.transportarSeq(val('transportar_val')),
+    invertir:           () => comdasuar.invertirSeq(val('invertir_val')),
+    expandirAlturas:    () => comdasuar.expandirAlturasSeq(val('expandirAlturas_eje'), val('expandirAlturas_esc')),
+    expandirDuraciones: () => comdasuar.expandirDuracionesSeq(val('expandirDuraciones_esc')),
+    retrogradarAlturas: () => comdasuar.retrogradarAlturasSeq(),
+    retrogradarDuraciones: () => comdasuar.retrogradarDuracionesSeq(),
+    desordenarAlturas:  () => comdasuar.desordenarAlturasSeq(),
+    desordenarDuraciones: () => comdasuar.desordenarDuracionesSeq(),
+    transmutarAlturas:  () => {
+        const b = parseInt(document.getElementById('transmuta_banco').value);
+        const s = parseInt(document.getElementById('transmuta_seq').value);
+        comdasuar.transmutarAlturasBankSeq(b, s);
+    },
+    transmutarDuraciones: () => {
+        const b = parseInt(document.getElementById('transmuta_banco').value);
+        const s = parseInt(document.getElementById('transmuta_seq').value);
+        comdasuar.transmutarDuracionesBankSeq(b, s);
+    },
+};
+
+document.querySelectorAll('button[data-h]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const fn = handlers[btn.dataset.h];
+        if (fn) { fn(); showInfo(); }
+    });
+});
+
+refrescarTodo();
+</script>
+</body>
+</html>

@@ -7,7 +7,8 @@
 +=================================================================================*/
 
 const {NotaAsuar} = require('./NotaAsuar.js');
-const {DiccionarioAsuar} = require('./diccionarioAsuar.js');
+const {getDiccionarioAsuar} = require('./diccionarioAsuar.js');
+const {log} = require('./util.js');
 
 /**
  * Clase SecuenciaAsuar
@@ -18,7 +19,7 @@ class SecuenciaAsuar{
     /**Crea una secuenciaAsuar (secuencia de NotaAsuar's)
      * @param {String} nombreSeq nombre de la secuencia actual  */
     constructor(nombreSeq){
-        console.log(" * SecuenciaAsuar constructor * ")
+        log(" * SecuenciaAsuar constructor * ")
         this.nombre = nombreSeq == "" || nombreSeq == undefined ? "[AsuarSeq] "  : nombreSeq;
         this.duracionTotal = 0;
         this.tempo = {figura:"N", pulsosPorMin:60, duracionPulso:1000};
@@ -30,7 +31,7 @@ class SecuenciaAsuar{
     }
 
     clear(){
-        console.log(" * Limpiando SecuenciaAsuar...")
+        log(" * Limpiando SecuenciaAsuar...")
         this.nombre="";
         this.notas = [];
         this.duracionTotal = 0;
@@ -42,7 +43,7 @@ class SecuenciaAsuar{
     addNota(nota){
         // nota instanceof NotaAsuar...
         //falta añadir control de errores en caso de que se ingrese otra cosa q no sea notaAsuar obj
-        console.log("Añadiendo nota: "+nota.altura.alturaAMS+" "+nota.duracion.duracionAMS);
+        log("Añadiendo nota: "+nota.altura.alturaAMS+" "+nota.duracion.duracionAMS);
         this.notas.push(nota);
         this.calcularDuracionTotal();
         this.computarInicios();
@@ -81,13 +82,13 @@ class SecuenciaAsuar{
     aplicarTempo(){
 
         const BPM2MS = (t) => (60/t)*1000;
-        let diccionario = new DiccionarioAsuar();
+        let diccionario = getDiccionarioAsuar();
 
         if(this.tempo.figura != "N" || this.tempo.duracionPulso != 1000){
-            console.log(" ~ Cambiando tempo de secuencia: "+this.tempo.figura+"="+this.tempo.duracionPulso)
+            log(" ~ Cambiando tempo de secuencia: "+this.tempo.figura+"="+this.tempo.duracionPulso)
 
             let escalaTempo = BPM2MS( this.tempo.pulsosPorMin ) / diccionario.ritmos[this.tempo.figura];
-            console.log(" ~ (Escala de tempo : "+escalaTempo+")")
+            log(" ~ (Escala de tempo : "+escalaTempo+")")
 
             for(let n = 0; n < this.notas.length; n++){
                 this.notas[n].setMS( this.notas[n].getMS()*escalaTempo );
@@ -95,7 +96,7 @@ class SecuenciaAsuar{
 
             this.calcularDuracionTotal();
         }else{
-            console.log(" ~ (manteniendo pulso por defecto "+this.tempo.figura+"="+this.tempo.pulsosPorMin+")");
+            log(" ~ (manteniendo pulso por defecto "+this.tempo.figura+"="+this.tempo.pulsosPorMin+")");
         }
         this.computarInicios();
     }
@@ -108,7 +109,7 @@ class SecuenciaAsuar{
         this.seqIndex = seq.seqIndex;
 
         this.notas=[];
-        console.log(`\n*** Cargando secuencia: ${seq.nombre}  (${seq.notas.length} notas)`)
+        log(`\n*** Cargando secuencia: ${seq.nombre}  (${seq.notas.length} notas)`)
         for(let n of seq.notas){
 
             let nota = new NotaAsuar(n.altura.alturaAMS,n.duracion.duracionAMS);
@@ -139,7 +140,7 @@ class SecuenciaAsuar{
     setDuraciones(ms){
         let contador = 0;
         for(let nota of this.notas){
-            if(ms[contador] != undefined || ms[contador] != null){
+            if(ms[contador] != undefined && ms[contador] != null){
                 nota.setMS( ms[contador++] );
             }
         }
@@ -152,7 +153,7 @@ class SecuenciaAsuar{
     setMidicents(mcs){
         let contador = 0;
         for(let nota of this.notas){
-            if(mcs[contador] != undefined || mcs[contador] != null){
+            if(mcs[contador] != undefined && mcs[contador] != null){
                 nota.altura.setMidicent( mcs[contador++] );
             }
         }
@@ -212,6 +213,10 @@ class SecuenciaAsuar{
     getNota(indice){    return this.notas[indice];}
 
     getIndice(){        return this.seqIndex;}
+
+    getNotas(){         return this.notas;}
+
+    getTempo(){         return this.tempo;}
 
     getUltimaNota(){    return this.notas[this.notas.length-1];}
 

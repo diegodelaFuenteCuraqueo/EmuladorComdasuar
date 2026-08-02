@@ -1,26 +1,25 @@
-const {AMSparser} = require('./AMSparser.js');
-//const {DiccionarioAsuar} = require('./diccionarioAsuar.js');
-//const {SecuenciaAsuar} = require("./SecuenciaAsuar.js");
 const {BancoDeSecuencias} = require("./BancoDeSecuencias.js");
 const {AdministradorDeBancos} = require("./AdministradorDeBancos.js");
-const {NotaAsuar} = require('./NotaAsuar.js');
 const Heuristicos = require('./Heuristicos.js');
-
-const fs  = require('fs');
+const {log, setDebug} = require('./util.js');
 
 class EmuladorComdasuar{
 
+    /** @param {string} archivoJSON (opcional) Texto JSON con los bancos de secuencias.
+     *  Si se entrega un archivo de disco, usar Persistencia.cargarAdmin(admin, ruta) (solo Node). */
     constructor(archivoJSON){
-        console.log (" * EmuladorComdasuar constructor * ")
+        log(" * EmuladorComdasuar constructor * ");
         this.ADMIN = new AdministradorDeBancos();
-        this.AMS = new AMSparser();
-        console.log(archivoJSON == "")
         if(archivoJSON == "" || archivoJSON == undefined || archivoJSON == null){
             this.ADMIN.addBanco(new BancoDeSecuencias() );
-            //this.ADMIN.editBanco().addSeq( new SecuenciaAsuar () );
         }else{
-            this.ADMIN.cargarArchivo(archivoJSON);
+            this.ADMIN.cargarJSON(archivoJSON);
         }
+    }
+
+    /** Activa o desactiva los logs de depuración internos de la librería. */
+    static setDebug(estado){
+        setDebug(estado);
     }
 
     /** Selecciona un banco desde el AdministradorDeBancos */
@@ -45,24 +44,15 @@ class EmuladorComdasuar{
     /** Reemplaza la partitura de la secuencia seleccionada.
      * @param {string} ams Partitura en AMS para reemplazarla en la secuencia seleccionada. */
     reemplazarPartituraAMS(ams){
-        this.AMS.cargarPartitura(ams);
-        this.AMS.compilar();
-
+        let banco = this.editBanco();
         let indiceAnterior = this.editSeq().getIndice();
+        let nombreAnterior = this.editSeq().getNombre();
 
-        this.editSeq().clear();
-        this.editSeq().setTempo(this.AMS.getTempo());
-        this.editSeq().setIndex(indiceAnterior);
+        let nuevaSeq = BancoDeSecuencias.secuenciaDesdeAMS(ams);
+        nuevaSeq.setIndex(indiceAnterior);
+        nuevaSeq.setNombre(nombreAnterior);
 
-        this.editSeq().setCodigoAMS(ams);
-
-        //ingresamos nota a nota
-        let out = [];
-        for(let x = 0; x <this.AMS.AMSduraciones.length; x++){
-            this.editSeq().addNota(new NotaAsuar(this.AMS.codigoPlano.alturas[x], this.AMS.codigoPlano.duraciones[x]));
-            let n = this.editSeq().getUltimaNota();
-        }
-        this.editSeq().aplicarTempo();
+        banco.setSeq(indiceAnterior, nuevaSeq);
         this.editSeq().print();
     }
 

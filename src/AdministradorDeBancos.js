@@ -4,20 +4,20 @@
 | Desarrollado por Diego de la Fuente Curaqueo                                    |
 | como parte del proyecto de recodificación del COMDASUAR original                |
 | creado por José Vicente Asuar durante los años 70'.                             |
-+=================================================================================*/
+ +=================================================================================*/
 
-const fs  = require('fs');
 const {BancoDeSecuencias} = require("./BancoDeSecuencias.js");
-//const {SecuenciaAsuar} = require('./SecuenciaAsuar.js');
+const {log} = require('./util.js');
 
 /**Clase AdministradorDeBancos
  * Reúne uno o varios BancosDeSecuencias. Permite exportarlos en formato JSON
  * así como también importarlos (reemplazando a los bancos pre-existentes).
+ * La lectura/escritura de archivos se realiza mediante Persistencia (solo Node).
  * */
 class AdministradorDeBancos{
 
     constructor(){
-        console.log (" * AdministradorDeBancos constructor * ")
+        log (" * AdministradorDeBancos constructor * ")
 
         this.bancos = [];
         this.JSONin = "";
@@ -30,7 +30,7 @@ class AdministradorDeBancos{
         this.bancos.push(b);
         this.selBanco( this.bancos.length-1 );
         this.bancos[this.bancoActual].setIndice(this.bancoActual);
-        console.log("Nuevo BancoDeSecuencias insertado : id "+this.bancoActual+" (seleccionado)");
+        log("Nuevo BancoDeSecuencias insertado : id "+this.bancoActual+" (seleccionado)");
 
     }
 
@@ -38,7 +38,7 @@ class AdministradorDeBancos{
         this.bancos.push(new BancoDeSecuencias());
         this.selBanco( this.bancos.length-1 );
         this.bancos[this.bancoActual].setIndice(this.bancoActual);
-        console.log("Nuevo BancoDeSecuencias creado : id "+this.bancoActual+" (seleccionado)");
+        log("Nuevo BancoDeSecuencias creado : id "+this.bancoActual+" (seleccionado)");
     }
 
     getBancoActualIndex(){
@@ -46,15 +46,15 @@ class AdministradorDeBancos{
     }
 
     getBancoSecuencia(bancoIndex,seqIndex){
-        console.log("Retornando secuencia "+seqIndex+" desde banco "+bancoIndex);
-        return this.bancos[bancoIndex].secuencias[seqIndex];
+        log("Retornando secuencia "+seqIndex+" desde banco "+bancoIndex);
+        return this.bancos[bancoIndex].getSeq(seqIndex);
     }
 
     /** @param {number} n indice del banco a manipular ( 0 a bancos.length ) */
     selBanco(n){
         if( n <= this.bancos.length -1 ){
             this.bancoActual = n;
-            console.log(` Banco seleccionado : ${this.bancoActual} (de ${this.bancos.length-1})` );
+            log(` Banco seleccionado : ${this.bancoActual} (de ${this.bancos.length-1})` );
         }else{
             console.error("ERROR : indice incorrecto para el banco. "+n+" ( "+typeof n+" )");}
     }
@@ -70,12 +70,12 @@ class AdministradorDeBancos{
 
     /** Permite manipular el banco seleccionado (con selBanco(n)) */
     editBanco()    {
-        console.log("Editando banco "+this.bancoActual);
+        log("Editando banco "+this.bancoActual);
         return this.bancos[this.bancoActual]; }
 
     /** Elimina todos los BancosAsuar */
     clear(){
-        console.log(" * Limpiando Administrador de bancos...")
+        log(" * Limpiando Administrador de bancos...")
         this.bancos = [];
         this.JSONin="";
     }
@@ -90,23 +90,17 @@ class AdministradorDeBancos{
         console.log("#"+" ".repeat(bordes )+bancosGuardados+" ".repeat(bordes )+" #");
     }
 
-    //METODOS PARA EL USO DE ARCHIVOS (IN/OUT) - - - - - - - - - - - - - - - - - - - - - - -
-    /** @param {string} rutaArchivo Ruta desde donde se cargará el archivo JSON con los bancos.  */
-    importarJSON(rutaArchivo){
-        this.JSONin = "";
-        try {
-            console.log("* Cargando archivo JSON.")
-            this.JSONin = fs.readFileSync(rutaArchivo);
-        } catch (err) {
-            console.error(err)
-        }
+    //METODOS PARA EL USO DE JSON (SIN ARCHIVOS; para archivos usar Persistencia) - - - - - -
+    /** @param {string} texto Texto JSON con los bancos de secuencias. */
+    importarJSON(texto){
+        this.JSONin = texto;
     }
 
-    /** Compila el archivo JSON cargado, reemplazando los bancos actuales. */
+    /** Compila el JSON cargado, reemplazando los bancos actuales. */
     compilarJSON(){
         let arregloBancos=JSON.parse(this.JSONin);
         this.bancos=[];
-        console.log(" ~ COMPILANDO JSON, cargando bancos de secuencias... ~ ")
+        log(" ~ COMPILANDO JSON, cargando bancos de secuencias... ~ ")
         for(let b of arregloBancos){
             let banco = new BancoDeSecuencias();
             banco.cargarBanco(b);
@@ -114,19 +108,17 @@ class AdministradorDeBancos{
         }
     }
 
-    /** Carga el archivo JSON con los BancosDeSecuencias y los compila en cascada (instanciando objetos BancoDeSecuencia, SecuenciaAsuar, NotaAsuar, AlturaAsuar y DuracionAsuar)
-     * @param {string} ruta ruta al archivo JSON con los BancosAsuar. */
-    cargarArchivo(ruta){
-        this.importarJSON(ruta);
+    /** Carga un texto JSON con los BancosDeSecuencias y los compila en cascada (instanciando objetos BancoDeSecuencia, SecuenciaAsuar, NotaAsuar, AlturaAsuar y DuracionAsuar)
+     * @param {string} texto Texto JSON con los BancosAsuar. */
+    cargarJSON(texto){
+        this.importarJSON(texto);
         this.compilarJSON();
     }
 
-    /** @param {string} rutaArchivo Ruta en donde se guardará el archivo JSON con todos los bancos.  */
-    exportarJSON(rutaArchivo){
-        console.log(" ~ EXPORTANDO ARCHIVO JSON CON BANCOS ~")
-        let JSONout = JSON.stringify(this.bancos);
-        try {               fs.writeFileSync(rutaArchivo, JSONout)
-        } catch (err) {     console.error(err)  }
+    /** @returns {string} Texto JSON con todos los bancos (para guardar en archivo, usar Persistencia.guardarAdmin). */
+    exportarJSON(){
+        log(" ~ EXPORTANDO JSON CON BANCOS ~")
+        return JSON.stringify(this.bancos);
     }
 
     //GETTERS - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

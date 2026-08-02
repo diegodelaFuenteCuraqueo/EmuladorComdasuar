@@ -6,8 +6,9 @@
 | creado por José Vicente Asuar durante los años 70'.                             |
 +=================================================================================*/
 
-const {DiccionarioAsuar} = require('./diccionarioAsuar.js');
-let AMS = new DiccionarioAsuar();
+const {getDiccionarioAsuar} = require('./diccionarioAsuar.js');
+const AMS = getDiccionarioAsuar();
+const {log} = require('./util.js');
 
 /** Se compone de un objeto AlturaAsuar y DuracionAsuar.
 *  También incluye otros datos relativos a la nota tales como su posición relativa en la SecuenciaAsuar, el tiempo de inicio y final (entre otros). */
@@ -31,7 +32,7 @@ class NotaAsuar{
 
     /** @param {NotaAsuar} nota objeto NotaAsuar en formato JSON (sin métodos). Los valores serán copiados al objeto actual. */
     cargarNota(nota){
-        console.log(`**** Cargando nota ${nota.altura.alturaAMS} ${nota.duracion.duracionAMS} (mc:${nota.altura.midinote} ms:${nota.duracion.duracionMS}) `) 
+        log(`**** Cargando nota ${nota.altura.alturaAMS} ${nota.duracion.duracionAMS} (mc:${nota.altura.midinote} ms:${nota.duracion.duracionMS}) `) 
         this.esNota = nota.esNota;
         this.altura = new AlturaAsuar(nota.altura.alturaAMS);
         this.altura.setMidicent(nota.altura.midicent);
@@ -61,7 +62,7 @@ class NotaAsuar{
     /** @returns {number} altura en nota midi (0-127, 60 = Do central) */
     getMidinote(){          return this.altura.getMidinote();}
     /**@returns {String} altura en código Asuar (AMS)   */
-    getAMSalt(){            return this.altura.getAMSalt();}
+    getAMSalt(){            return this.altura.getAlturaAMS();}
     /** @returns {number} altura en midicent (ej 6000 = Do central) */
     getMidicent(){          return this.altura.getMidicent();}
 

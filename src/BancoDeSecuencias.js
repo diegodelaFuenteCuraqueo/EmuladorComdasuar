@@ -8,19 +8,35 @@
 const {SecuenciaAsuar} = require('./SecuenciaAsuar.js');
 const {AMSparser} = require('./AMSparser.js');
 const {NotaAsuar} = require('./NotaAsuar.js');
+const {log} = require('./util.js');
 
 /** Agrupa una o varias SecuenciasAsuar */
 class BancoDeSecuencias{
 
     constructor(nombreBanco){
-        console.log (" * BancoDeSecuencias constructor * ")
+        log (" * BancoDeSecuencias constructor * ")
 
         this.nombre = nombreBanco == undefined || nombreBanco == "" ? "[AsuarBank] " : nombreBanco ;
         this.secuencias=[];
         this.seqActual = 0;
         this.indice = -1;
+    }
 
-        this.AMS = new AMSparser();
+    /** Crea una SecuenciaAsuar a partir de una partitura en formato AMS (sin agregarla al banco).
+     * @param {string} ams Partitura en formato AMS.
+     * @returns {SecuenciaAsuar} */
+    static secuenciaDesdeAMS(ams){
+        const AMS = new AMSparser();
+        const {alturas, duraciones, tempo} = AMS.parse(ams);
+
+        const seq = new SecuenciaAsuar();
+        seq.setCodigoAMS(ams);
+        for(let x = 0; x < alturas.length; x++){
+            seq.addNota(new NotaAsuar(alturas[x], duraciones[x]));
+        }
+        seq.setTempo(tempo);
+        seq.aplicarTempo();
+        return seq;
     }
 
     //METODOS PARA LA MANIPULACION DE DATOS DE LAS SECUENCIAS - - - - - - - - - - - - - - - //
@@ -38,28 +54,21 @@ class BancoDeSecuencias{
 
     /** @param {string} amsSeq Recibe una partitura en formato AMS, la convierte en una SecuenciaAsuar y luego será añadida al banco. */
     addSeqAMS(amsSeq) {
-        let seq = new SecuenciaAsuar();
+        this.addSeq(BancoDeSecuencias.secuenciaDesdeAMS(amsSeq)); //la agrega al banco
+    }
 
-        //carga y compila el código AMS
-        this.AMS.cargarPartitura(amsSeq);
-        this.AMS.compilar();
-
-        seq.setCodigoAMS(amsSeq);
-        for(let x = 0; x < this.AMS.AMSduraciones.length; x++){ //ingresa nota por nota
-            seq.addNota( new NotaAsuar(this.AMS.codigoPlano.alturas[x], this.AMS.codigoPlano.duraciones[x]));
-        }
-
-        seq.setTempo(this.AMS.getTempo());
-        seq.aplicarTempo();
-
-        this.addSeq(seq); //la agrega al banco
+    /** @param {number} indice indice de la secuencia a reemplazar
+     *  @param {SecuenciaAsuar} seq nueva secuencia que ocupará la posición */
+    setSeq(indice, seq){
+        this.secuencias[indice] = seq;
+        this.selSeq(indice);
     }
 
     /** @param {number} n indice de la secuencia a manipular ( 0 a secuencias.length ) */
     selSeq(n){
         if( n <= this.secuencias.length -1 ){
             this.seqActual= n;
-            console.log(` Secuencia seleccionada : ${this.seqActual} (de ${this.secuencias.length-1})` );
+            log(` Secuencia seleccionada : ${this.seqActual} (de ${this.secuencias.length-1})` );
         }else{
             console.error("ERROR : indice incorrecto para la secuencia. "+n+" ( "+typeof n+" )");
         }
@@ -76,7 +85,7 @@ class BancoDeSecuencias{
 
     /** Permite manipular la secuencia seleccionada (con selSec(n)) */
     editSeq()   {
-        console.log("Editando Secuencia "+this.seqActual);
+        log("Editando Secuencia "+this.seqActual);
         return this.secuencias[this.seqActual];
     }
 
@@ -87,7 +96,7 @@ class BancoDeSecuencias{
         this.indice = b.indice == undefined ? 0 : b.indice;
         this.nombre = b.nombre == "" || b.nombre == undefined ? "[AsuarBank] " : b.nombre;
 
-        console.log(`** Cargando banco ${b.nombre} (${b.secuencias.length} Secuencias)`);
+        log(`** Cargando banco ${b.nombre} (${b.secuencias.length} Secuencias)`);
         for(let s of b.secuencias){
             let sec = new SecuenciaAsuar();
             sec.cargarSecuencia(s);
@@ -117,7 +126,7 @@ class BancoDeSecuencias{
     /** @returns {string} Retorna el nombre del Banco */
     getNombre(){        return this.nombre}
 
-    getSecuenciaActualIndex(){ return this.secuenciaActual;}
+    getSecuenciaActualIndex(){ return this.seqActual;}
 
     print(){
         console.log();
@@ -141,7 +150,7 @@ class BancoDeSecuencias{
     }
 
     clear(){
-        console.log(" * Limpiando BancoDeSecuencias...");
+        log(" * Limpiando BancoDeSecuencias...");
         this.secuencias = [];
     }
 
