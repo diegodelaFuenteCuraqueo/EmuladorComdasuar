@@ -27,6 +27,19 @@
   .heuristicos input { width:90px; }
   #volumen { width:120px; }
 
+  /* - - - partitura VexFlow - - - */
+  .partitura-scroll { overflow-x:auto; background:white; border-radius:6px; padding:8px; margin-top:8px; }
+  .partitura-scroll svg, .partitura-scroll canvas { display:block; margin:0 auto; }
+  .partitura-scroll .partitura-vacio { opacity:.7; font-size:12px; }
+
+  @media print {
+    body * { visibility:hidden; }
+    #zonaPartitura, #zonaPartitura * { visibility:visible; }
+    #zonaPartitura { position:absolute; left:0; top:0; width:100%; }
+    .partitura-scroll { overflow:visible; padding:0; background:#fff; border:none; }
+    #partituraVexflow svg { max-width:100%; height:auto; }
+  }
+
   /* - - - editor AMS con sintaxis coloreada (overlay) - - - */
   .editor { position:relative; height:130px; min-height:130px; resize:vertical; overflow:hidden; }
   .editor pre, .editor textarea {
@@ -61,8 +74,10 @@
 <body>
 
 <h1>Emulador COMDASUAR — Test manual</h1>
-<p class="sub">Parser AMS, secuencias, bancos, heurísticos, reproducción WebAudio y exportación MIDI.
-Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://</code> el bundle <code>comdasuar.js</code> debe estar junto a este archivo y no se muestran las partituras de ejemplo.</p>
+<p class="sub">Parser AMS, secuencias, bancos, heurísticos, reproducción WebAudio, exportación MIDI
+y partitura VexFlow (pentagrama de piano, un compás por secuencia).
+Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://</code> el bundle <code>comdasuar.js</code> debe estar junto a este archivo y no se muestran las partituras de ejemplo.
+La partitura VexFlow se carga desde CDN y requiere conexión a internet.</p>
 
 <div class="fila">
   <label><input type="checkbox" id="chkDebug"> Logs de depuración</label>
@@ -189,11 +204,30 @@ Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://
   </div>
 </div>
 
+<div class="panel">
+  <h2 style="margin-top:0">6. Partitura VexFlow</h2>
+  <p>La secuencia actual se dibuja como partitura de piano (pentagrama doble, agudos
+  en clave de sol y graves en clave de fa, repartidos por el Do central). Toda la
+  secuencia va en un solo compás, sin líneas divisorias ni armadura. VexFlow se
+  carga desde CDN; sin red esta sección queda deshabilitada.</p>
+  <div class="fila">
+    <button id="btnRedibujarPartitura">Redibujar</button>
+    <button id="btnPngPartitura">Descargar PNG</button>
+    <button id="btnSvgPartitura">Descargar SVG</button>
+    <button id="btnImprimirPartitura">Imprimir / PDF</button>
+    <span id="vexflowInfo"></span>
+  </div>
+  <div id="zonaPartitura">
+    <div id="partituraVexflow" class="partitura-scroll"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js"></script>
 <script src="./comdasuar.js"></script>
 <script>
 "use strict";
 
-const {EmuladorComdasuar, Reproductor, MIDIexport, ResaltadorAMS} = window.comdasuar;
+const {EmuladorComdasuar, Reproductor, MIDIexport, ResaltadorAMS, AsuarVexflow} = window.comdasuar;
 const comdasuar = new EmuladorComdasuar();
 let reproductor = null;
 const resaltador = new ResaltadorAMS();
@@ -309,6 +343,7 @@ function showInfo(){
         document.getElementById('nombreSeq').value = '';
         setInfo('(sin secuencia)');
         document.querySelector('#notas tbody').innerHTML = '';
+        redibujarPartitura();
         return;
     }
     document.getElementById('etiquetaSeq').textContent = etiquetaBancoSeq(comdasuar.ADMIN.getBancoActualIndex(), seq.getIndice());
@@ -341,12 +376,14 @@ function showInfo(){
             '<td>' + n.fin.toFixed(1) + '</td>';
         tbody.appendChild(tr);
     });
+    redibujarPartitura();
 }
 
 function refrescarTodo(){
     refreshBancos();
     refreshSecuencias();
     showInfo();
+    redibujarPartitura();
 }
 
 // - - - partituras de ejemplo (servidor) - - - - - - - - - - - - - - - - - - - - //
@@ -440,6 +477,158 @@ function descargarMIDI(){
     document.getElementById('midiInfo').textContent = banco.getSize() + ' secuencia(s) -> ' + bytes.length + ' bytes (SMF formato 1, PPQ 480)';
 }
 
+// - - - partitura VexFlow - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
+
+const zonaPartitura = document.getElementById('partituraVexflow');
+const vexflowInfo = document.getElementById('vexflowInfo');
+
+/** Convierte los descriptores del modelo (AsuarVexflow.compilar) en notas,
+ *  agrupando los tuplets. Devuelve {notas, tuplets, voice, descriptores}. */
+function construirVozVexflow(descriptores, clef){
+    const notas = descriptores.map(d => d.silencio
+        ? new Vex.Flow.StaveNote({clef: clef, keys: ['b/4'], duration: d.duracion + 'r'})
+        : new Vex.Flow.StaveNote({clef: clef, keys: d.claves, duration: d.duracion}));
+    const tuplets = [];
+    let i = 0;
+    while (i < descriptores.length){
+        if (descriptores[i].tuplet){
+            const j = i;
+            const n = descriptores[i].tuplet;
+            while (i < descriptores.length && descriptores[i].tuplet === n) i++;
+            tuplets.push(new Vex.Flow.Tuplet(notas.slice(j, i), {num_notes: n}));
+        } else {
+            i++;
+        }
+    }
+    const voice = new Vex.Flow.Voice({num_beats: 4, beat_value: 4});
+    voice.setMode(Vex.Flow.Voice.Mode.SOFT);
+    voice.addTickables(notas);
+    return {notas: notas, tuplets: tuplets, voice: voice, descriptores: descriptores};
+}
+
+/** Dibuja la secuencia actual en `contenedor` con VexFlow. Devuelve el renderer
+ *  (para PNG/SVG se reutiliza con un contenedor fuera de pantalla). */
+function dibujarPartitura(backend, contenedor, ancho){
+    contenedor.innerHTML = '';
+    const seq = comdasuar.editSeq();
+    if (!seq){
+        contenedor.innerHTML = '<span class="partitura-vacio">(sin secuencia)</span>';
+        return null;
+    }
+    const modelo = new AsuarVexflow(seq).compilar();
+    const compas = modelo.compases[0];
+    const caption = (seq.getNombre() || 'Sin nombre') + ' — N=' + seq.getNotas().length +
+        ' (' + modelo.tempo.figura + '=' + modelo.tempo.pulsosPorMin + ')';
+
+    const alto = 210;
+    const renderer = new Vex.Flow.Renderer(contenedor, backend);
+    renderer.resize(ancho, alto);
+    const ctx = renderer.getContext();
+
+    const stT = new Vex.Flow.Stave(0, 20, ancho);
+    stT.addClef('treble').setEndBarType(Vex.Flow.Barline.type.NONE);
+    stT.setText(caption, Vex.Flow.Modifier.Position.ABOVE);
+    const stB = new Vex.Flow.Stave(0, 150, ancho);
+    stB.addClef('bass').setEndBarType(Vex.Flow.Barline.type.NONE);
+
+    const brace = new Vex.Flow.StaveConnector(stT, stB).setType(Vex.Flow.StaveConnector.type.BRACE);
+    const barra = new Vex.Flow.StaveConnector(stT, stB).setType(Vex.Flow.StaveConnector.type.SINGLE_LEFT);
+
+    if (compas){
+        const agudos = construirVozVexflow(compas.voces.agudos, 'treble');
+        const graves = construirVozVexflow(compas.voces.graves, 'bass');
+        new Vex.Flow.Formatter().joinVoices([agudos.voice, graves.voice])
+            .format([agudos.voice, graves.voice], ancho - 80);
+
+        stT.setContext(ctx).draw();
+        stB.setContext(ctx).draw();
+        brace.setContext(ctx).draw();
+        barra.setContext(ctx).draw();
+
+        agudos.voice.draw(ctx, stT);
+        graves.voice.draw(ctx, stB);
+        for (const t of agudos.tuplets.concat(graves.tuplets)) t.setContext(ctx).draw();
+
+        for (const v of [agudos, graves]){
+            for (let k = 0; k < v.descriptores.length - 1; k++){
+                const d = v.descriptores[k];
+                if (d.ligada && !d.silencio && !v.descriptores[k + 1].silencio){
+                    new Vex.Flow.StaveTie({
+                        first_note: v.notas[k],
+                        last_note: v.notas[k + 1],
+                        first_indices: [0],
+                        last_indices: [0],
+                    }).setContext(ctx).draw();
+                }
+            }
+        }
+    } else {
+        stT.setContext(ctx).draw();
+        stB.setContext(ctx).draw();
+        brace.setContext(ctx).draw();
+        barra.setContext(ctx).draw();
+    }
+    return renderer;
+}
+
+function redibujarPartitura(){
+    if (!window.Vex){
+        zonaPartitura.innerHTML = '<span class="partitura-vacio">VexFlow no está disponible (sin conexión a la CDN).</span>';
+        vexflowInfo.textContent = '(VexFlow no cargado)';
+        return;
+    }
+    vexflowInfo.textContent = '';
+    const seq = comdasuar.editSeq();
+    const ancho = Math.max(zonaPartitura.clientWidth || 900, 900);
+    dibujarPartitura(Vex.Flow.Renderer.Backends.SVG, zonaPartitura, ancho);
+}
+
+function descargarPartituraPNG(){
+    if (!window.Vex || !comdasuar.editSeq()) return;
+    const seq = comdasuar.editSeq();
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = 'position:fixed;left:-9999px;top:0;';
+    document.body.appendChild(canvas);
+    try {
+        const ancho = Math.max(900, seq.getNotas().length * 70);
+        dibujarPartitura(Vex.Flow.Renderer.Backends.CANVAS, canvas, ancho);
+        const enlace = document.createElement('a');
+        enlace.download = MIDIexport.sanitizarNombre(seq.getNombre()) + '_partitura.png';
+        enlace.href = canvas.toDataURL('image/png');
+        enlace.click();
+    } finally {
+        canvas.remove();
+    }
+}
+
+function descargarPartituraSVG(){
+    if (!window.Vex || !comdasuar.editSeq()) return;
+    const seq = comdasuar.editSeq();
+    const tmp = document.createElement('div');
+    tmp.style.cssText = 'position:fixed;left:-9999px;top:0;';
+    document.body.appendChild(tmp);
+    try {
+        const ancho = Math.max(900, seq.getNotas().length * 70);
+        dibujarPartitura(Vex.Flow.Renderer.Backends.SVG, tmp, ancho);
+        const svg = tmp.querySelector('svg');
+        const xml = new XMLSerializer().serializeToString(svg);
+        const blob = new Blob([xml], {type: 'image/svg+xml'});
+        const url = URL.createObjectURL(blob);
+        const enlace = document.createElement('a');
+        enlace.download = MIDIexport.sanitizarNombre(seq.getNombre()) + '_partitura.svg';
+        enlace.href = url;
+        enlace.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } finally {
+        tmp.remove();
+    }
+}
+
+function imprimirPartitura(){
+    redibujarPartitura();
+    window.print();
+}
+
 // - - - eventos - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
 document.getElementById('chkDebug').addEventListener('change', (e) => {
     EmuladorComdasuar.setDebug(e.target.checked);
@@ -522,6 +711,10 @@ document.getElementById('btnPlay').addEventListener('click', reproducir);
 document.getElementById('btnStop').addEventListener('click', detener);
 document.getElementById('btnDescargarZIP').addEventListener('click', descargarZIP);
 document.getElementById('btnDescargarMIDI').addEventListener('click', descargarMIDI);
+document.getElementById('btnRedibujarPartitura').addEventListener('click', redibujarPartitura);
+document.getElementById('btnPngPartitura').addEventListener('click', descargarPartituraPNG);
+document.getElementById('btnSvgPartitura').addEventListener('click', descargarPartituraSVG);
+document.getElementById('btnImprimirPartitura').addEventListener('click', imprimirPartitura);
 
 document.getElementById('btnRenombrarBanco').addEventListener('click', () => {
     comdasuar.editBanco().setNombre(document.getElementById('nombreBanco').value);

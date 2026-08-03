@@ -74,7 +74,7 @@ const comdasuar = require('emuladorcomdasuar');
 const seq = comdasuar.BancoDeSecuencias.secuenciaDesdeAMS('4C N 4E S');
 ```
 
-El bundle expone en `window.comdasuar` (o como export del paquete) un único objeto con todas las clases públicas: `EmuladorComdasuar`, `AMSparser`, `BancoDeSecuencias`, `SecuenciaAsuar`, `NotaAsuar`, `Reproductor`, `MIDIexport`, `AdministradorDeBancos`, `Heuristicos`, `DiccionarioAsuar`, `getDiccionarioAsuar`, `Persistencia`, `ResaltadorAMS`, `crearZip` y `crc32`. `Persistencia` usa `fs` (solo Node); en el navegador el bundle carga igual y solo falla si se invoca. Para regenerarlo tras cambios en `src/`:
+El bundle expone en `window.comdasuar` (o como export del paquete) un único objeto con todas las clases públicas: `EmuladorComdasuar`, `AMSparser`, `BancoDeSecuencias`, `SecuenciaAsuar`, `NotaAsuar`, `Reproductor`, `MIDIexport`, `AdministradorDeBancos`, `Heuristicos`, `DiccionarioAsuar`, `getDiccionarioAsuar`, `Persistencia`, `ResaltadorAMS`, `AsuarVexflow`, `crearZip` y `crc32`. `Persistencia` usa `fs` (solo Node); en el navegador el bundle carga igual y solo falla si se invoca. Para regenerarlo tras cambios en `src/`:
 
 ```
 npm run build
@@ -169,6 +169,27 @@ Los segmentos son contiguos y reconstruyen el texto original exactamente (incluy
 
 En el modo `J0` el resaltador alterna posición de altura y duración (como el parser, que lee pares altura-duración); con `J1` (duración constante) solo hay alturas, y con `J2` (altura constante) solo duraciones. Los métodos públicos `esAltura(texto)`, `esDuracion(texto)` y `esRest(texto)` permiten validar una palabra suelta.
 
+### Partitura de piano (grand staff) con VexFlow (`AsuarVexflow`)
+
+`src/gui/AsuarVexflow.js` es una clase de **conversión pura** (no importa VexFlow ni el DOM): transforma una `SecuenciaAsuar` en un árbol de descriptores listo para pintar con VexFlow en un pentagrama doble (clave de sol y de fa, unidos por llave), dividido en el Do central (Do4): `midicent >= 6000` va al pentagrama superior (`agudos`), el resto al inferior (`graves`). Un acorde puede partirse entre ambos pentagramas.
+
+```javascript
+const { BancoDeSecuencias } = require('./src/BancoDeSecuencias.js');
+const { AsuarVexflow } = require('./src/gui/AsuarVexflow.js');
+
+const seq = BancoDeSecuencias.secuenciaDesdeAMS('J2 3N 4C 5E');
+const vf = new AsuarVexflow(seq);
+const arbol = vf.compilar();
+// arbol = { pentagramas: { agudos: {notas, figuras}, graves: {notas, figuras} },
+//           compases: [], caption: '...', clave: '4', tempoInicial: null, npp: 4 }
+```
+
+Cada nota del árbol trae su `midicent`, `altura` (nombre de nota VexFlow, p. ej. `'C/4'`), `octava`, `alteracion`, `figura`, `silencio`, `ligada` y `tuplet`. La figura es una duración VexFlow (`"4"`, `"8d"`, …); los grupos irregulares de `3`, `5` o `7` figuras se agrupan en un `Tuplet` (campo `tuplet` con el número de notas, `null` si no aplica) y las duraciones que no caben en una sola figura se encadenan con ligaduras de prolongación (`ligada: true`). Métodos públicos: `compilar()`, `claveDeMidicent(mc, preferBemol)`, `claveDeAltura()`, `duracionVexflow()`, `_redondear()`, `_figuraMasCercana()`, `_descriptor()` y `_expandirCeros()`.
+
+La página `test/manual.html` incluye un panel **"6. Partitura VexFlow"** que pinta este árbol con VexFlow 4 (cargado desde la CDN `https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js`; si no está disponible muestra "(VexFlow no cargado)") y permite redibujar, descargar PNG y SVG, e imprimir. En la partitura la secuencia completa ocupa un único compás (los compases se reservan para un futuro indicador de compás), la leyenda es `nombre — N=notas (figura=pulsosPorMin)` y las notas alteradas con `W` en AMS se escriben con bemoles; los cuartos de tono (U/V/T/R) se redondean al semitono más cercano.
+
+> Nota: el panel de partitura necesita conexión (o un `vexflow.js` servido localmente junto al bundle); sin VexFlow el resto de la página funciona igual.
+
 ### Edición de secuencias y bancos (métodos)
 
 Además de parsear y reproducir, la librería permite editar la estructura de bancos y secuencias (funciona igual en Node y en el navegador):
@@ -214,6 +235,7 @@ Cobertura por archivo (`test/unit/`):
 | `midi.test.js`            | Salida SMF byte a byte: cabecera, tempo meta, ticks, silencios, PPQ 480    |
 | `zip.test.js`             | CRC-32, estructura ZIP, `bancos2zip` (un `.mid` por secuencia), `guardarZIP` |
 | `resaltador.test.js`      | `ResaltadorAMS`: segmentos, modos J0-J2, tempo, `/`, errores, `esAltura`/`esDuracion` |
+| `asuarvexflow.test.js`    | `AsuarVexflow`: claves, figuras/puntillos/ligaduras, grupos 3/5/7, división agudos/graves, silencios |
 | `edicion.test.js`         | `clone`, `deleteSeq`/`duplicarSeq`, `deleteBanco`, métodos de fachada      |
 | `reproductor.test.js`     | `midicent2hz`, comportamiento en Node (sin AudioContext)                   |
 
@@ -231,6 +253,7 @@ Abrir `http://localhost:3000` y probar `test/manual.html`:
 4. **Editar el banco** — cada secuencia se identifica con su etiqueta `banco_secuencia` (`0_0`, `0_1`, …). Puedes renombrar/duplicar/eliminar la secuencia seleccionada, y renombrar/eliminar el banco.
 5. **Heurísticos** — aplica transportar, invertir, retrogradar, expandir o transmutar sobre la secuencia seleccionada.
 6. **Exportar MIDI** — "Descargar ZIP (1 .mid por secuencia)" baja un ZIP con un archivo `banco_secuencia.mid` por secuencia; "Descargar MIDI (banco, formato 1)" genera el SMF multi-pista del banco completo.
+7. **Partitura VexFlow** — el panel "Partitura VexFlow" pinta la secuencia seleccionada en pentagrama doble (requiere VexFlow desde la CDN). "Redibujar" repinta, "PNG"/"SVG" descargan la imagen y "Imprimir" imprime solo la partitura.
 
 > Nota: `test/manual.html` también funciona abriéndolo con `file://`, pero el menú de partituras de ejemplo se oculta (requiere el servidor). El audio WebAudio necesita un gesto del usuario (clic en Reproducir).
 

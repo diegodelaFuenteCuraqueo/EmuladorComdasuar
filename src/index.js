@@ -29,6 +29,7 @@ import Heuristicos from './Heuristicos.js';
 import Persistencia from './Persistencia.js';
 import util from './util.js';
 import {ResaltadorAMS} from './gui/ResaltadorAMS.js';
+import {AsuarVexflow} from './gui/AsuarVexflow.js';
 
 export default {
     EmuladorComdasuar,
@@ -46,6 +47,7 @@ export default {
     crearZip,
     crc32,
     ResaltadorAMS,
+    AsuarVexflow,
     DEBUG: util.DEBUG,
     setDebug: util.setDebug,
     log: util.log,
