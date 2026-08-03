@@ -46,6 +46,6 @@ jobs:
         protocol: ftp
         timeout: 240000
         passive: false
-        server-dir: public_html/ecomdasuar
+        server-dir: public_html/ecomdasuar/
         local-dir: dist/
         log-level: verbose
