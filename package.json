@@ -2,13 +2,18 @@
   "name": "emuladorcomdasuar",
   "version": "1.0.0",
   "description": "Un Emulador de un Sistema para hacer música con un microcomputador COMDASUAR (originalmente creado por José Vicente Asuar en 1978)",
-  "main": "src/EmuladorComdasuar.js",
+  "main": "dist/comdasuar.js",
   "scripts": {
     "test": "node --test \"test/unit/*.test.js\"",
     "test:watch": "node --test --watch \"test/unit/*.test.js\"",
     "dev": "node server/server.js",
-    "build:browser": "node tools/build-browser.js"
+    "build": "rollup -c"
   },
   "author": "Diego de la Fuente Curaqueo",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-terser": "^1.0.0",
+    "rollup": "^4.62.4"
+  }
 }

@@ -46,12 +46,15 @@ class Reproductor {
         const notas = this.seq.getNotas();
 
         for (const nota of notas){
-            const mc = nota.getMidicent();
-            if (mc <= 0) continue; // silencio
-            const freq = Reproductor.midicent2hz(mc);
             const inicio = t0 + nota.getInicio() / 1000;
             const duracion = Math.max(0.06, nota.getMS() / 1000);
-            this.programarNota(ctx, freq, inicio, duracion);
+
+            //los acordes suenan todas sus alturas a la vez (un oscilador por altura)
+            for (const mc of nota.getMidicents()){
+                if (mc <= 0) continue; // silencio
+                const freq = Reproductor.midicent2hz(mc);
+                this.programarNota(ctx, freq, inicio, duracion);
+            }
         }
 
         this.playing = true;

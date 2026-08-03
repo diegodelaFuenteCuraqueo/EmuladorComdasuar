@@ -31,7 +31,7 @@
 
 <h1>Emulador COMDASUAR — Test manual</h1>
 <p class="sub">Parser AMS, secuencias, bancos, heurísticos, reproducción WebAudio y exportación MIDI.
-Cargado mejor vía <code>npm run dev</code> (http://localhost:3000); también funciona con <code>file://</code> (sin partituras de ejemplo).</p>
+Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://</code> el bundle <code>comdasuar.js</code> debe estar junto a este archivo y no se muestran las partituras de ejemplo.</p>
 
 <div class="fila">
   <label><input type="checkbox" id="chkDebug"> Logs de depuración</label>
@@ -149,10 +149,11 @@ Cargado mejor vía <code>npm run dev</code> (http://localhost:3000); también fu
   </div>
 </div>
 
-<script src="./comdasuar.browser.js"></script>
+<script src="./comdasuar.js"></script>
 <script>
 "use strict";
 
+const {EmuladorComdasuar, Reproductor, MIDIexport} = window.comdasuar;
 const comdasuar = new EmuladorComdasuar();
 let reproductor = null;
 
@@ -248,10 +249,10 @@ function showInfo(){
     seq.getNotas().forEach((n, i) => {
         const tr = document.createElement('tr');
         tr.innerHTML = '<td>' + i + '</td>' +
-            '<td>' + n.getAMSalt() + '</td>' +
+            '<td>' + n.getAlturas().map(a => a.getAlturaAMS()).join(' ') + '</td>' +
             '<td>' + n.getAMSdur() + '</td>' +
-            '<td>' + n.getMidinote() + '</td>' +
-            '<td>' + n.getMidicent() + '</td>' +
+            '<td>' + n.getAlturas().map(a => a.getMidinote()).join('/') + '</td>' +
+            '<td>' + n.getMidicents().join('/') + '</td>' +
             '<td>' + n.getMS().toFixed(1) + '</td>' +
             '<td>' + n.getInicio().toFixed(1) + '</td>' +
             '<td>' + n.fin.toFixed(1) + '</td>';

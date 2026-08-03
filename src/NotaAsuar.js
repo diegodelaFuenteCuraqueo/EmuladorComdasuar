@@ -15,11 +15,12 @@ const {log} = require('./util.js');
 class NotaAsuar{
 
     /** Nota generada utilizando nomenclatura Asuar (AMS)
-     *  @param {String} altura      Altura expresada en código Asuar (AMS)
-     *  @param {String} duracion    Duración expresada en código Asuar (AMS) */
+     *  @param {String} altura      Altura expresada en código Asuar (AMS).
+     *                              Puede contener un acorde (alturas separadas por "."). */
     constructor(altura, duracion){
 
-        this.altura = new AlturaAsuar(altura);
+        this.alturas = [];
+        this.cargarAlturas(altura);
         this.duracion = new DuracionAsuar(duracion);
         this.inicio = 0;
         this.fin = 0;
@@ -30,12 +31,40 @@ class NotaAsuar{
         this.esNota = true;
     }
 
+    /** Interpreta una altura AMS que puede contener un acorde (alturas separadas
+     *  por "."). La primera altura es la "primaria" (this.altura); las demás
+     *  solo aportan sonidos simultáneos. */
+    cargarAlturas(alturaAMS){
+        const lista = String(alturaAMS).split(".").filter(s => s !== "");
+        this.alturas = [];
+        for(let a of lista){
+            this.alturas.push(new AlturaAsuar(a));
+        }
+        if(this.alturas.length === 0){
+            this.alturas.push(new AlturaAsuar(""));
+        }
+        this.altura = this.alturas[0];
+    }
+
     /** @param {NotaAsuar} nota objeto NotaAsuar en formato JSON (sin métodos). Los valores serán copiados al objeto actual. */
     cargarNota(nota){
-        log(`**** Cargando nota ${nota.altura.alturaAMS} ${nota.duracion.duracionAMS} (mc:${nota.altura.midinote} ms:${nota.duracion.duracionMS}) `) 
+        log(`**** Cargando nota ${nota.altura.alturaAMS} ${nota.duracion.duracionAMS} (mc:${nota.altura.midinote} ms:${nota.duracion.duracionMS}) `)
         this.esNota = nota.esNota;
-        this.altura = new AlturaAsuar(nota.altura.alturaAMS);
-        this.altura.setMidicent(nota.altura.midicent);
+
+        //acordes: nota.alturas[]; compatibilidad con JSON antiguo: nota.altura
+        if(Array.isArray(nota.alturas) && nota.alturas.length > 0){
+            this.alturas = nota.alturas.map(a => {
+                let alt = new AlturaAsuar(a.alturaAMS);
+                alt.setMidicent(a.midicent);
+                return alt;
+            });
+        }else{
+            let alt = new AlturaAsuar(nota.altura.alturaAMS);
+            alt.setMidicent(nota.altura.midicent);
+            this.alturas = [alt];
+        }
+        this.altura = this.alturas[0];
+
         this.duracion = new DuracionAsuar(nota.duracion.duracionAMS);
         this.duracion.setMS(nota.duracion.duracionMS);
         this.setInicio(nota.inicio);
@@ -65,6 +94,34 @@ class NotaAsuar{
     getAMSalt(){            return this.altura.getAlturaAMS();}
     /** @returns {number} altura en midicent (ej 6000 = Do central) */
     getMidicent(){          return this.altura.getMidicent();}
+    /** @returns {AlturaAsuar[]} todas las alturas del evento (acorde). */
+    getAlturas(){           return this.alturas.slice();}
+    /** @returns {array} arreglo con los midicents de cada altura (acorde). */
+    getMidicents(){         return this.alturas.map(a => a.getMidicent());}
+    /** @returns {boolean} true si el evento suena más de una altura a la vez. */
+    esAcorde(){             return this.alturas.length > 1;}
+    /** @param {array|number} mcs arreglo con midicents (uno por altura); reemplaza las alturas del evento. */
+    setMidicents(mcs){
+        if(!Array.isArray(mcs)){ mcs = [mcs]; }
+        for(let i = 0; i < this.alturas.length && i < mcs.length; i++){
+            this.alturas[i].setMidicent(mcs[i]);
+        }
+    }
+
+    /** Reemplaza el acorde completo: el arreglo define exactamente las alturas del
+     *  evento (crea/elimina AlturaAsuar según la cantidad de midicents). Reutiliza
+     *  la etiqueta AMS de las alturas que coincidan en midicent. */
+    setAcorde(mcs){
+        if(!Array.isArray(mcs)){ mcs = [mcs]; }
+        const existentes = this.alturas;
+        this.alturas = mcs.map(mc => {
+            const previo = existentes.find(a => Math.abs(a.getMidicent() - mc) < 0.5);
+            const alt = new AlturaAsuar(previo ? previo.getAlturaAMS() : "");
+            alt.setMidicent(mc);
+            return alt;
+        });
+        this.altura = this.alturas[0];
+    }
 
     print(){
         let a = this.altura;
@@ -73,7 +130,7 @@ class NotaAsuar{
         let f= this.fin;
         let x=this.indice;
         console.log(`------------------ Nota Asuar ------------------`);
-        console.log(`Altura: ${a.alturaAMS}  Ritmo: ${d.duracionAMS}  Indice (rel): ${x}`);
+        console.log(`Altura: ${this.getAlturas().map(al => al.alturaAMS).join(" ")}  Ritmo: ${d.duracionAMS}  Indice (rel): ${x}`);
         console.log(`MIDI-note: ${a.getMidinote()}  Duracion: ${d.getMS()}ms.`);
         console.log(`Inicio: ${i.toFixed(2)}   Fin: ${f.toFixed(2)}  indice relativo: ${x}`);
     }

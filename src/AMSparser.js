@@ -61,19 +61,14 @@ class AMSparser{
 
         let gruposIrregulares = "0357".split("");
         let grupoIrregular = "";
-        let octavas = "123456789".split("");
         let ultimaOctava = "";
 
         for(let i = 0; i < this.AMSalturas.length;i++){
-            //aplicamos redundancias de octavas
-            let alturaConTodosLosDatos = this.AMSalturas[i];
-            if(!octavas.includes(alturaConTodosLosDatos[0]) && !alturaConTodosLosDatos.includes("R")){
-                alturaConTodosLosDatos = ultimaOctava+alturaConTodosLosDatos;
-            }else if(octavas.includes(alturaConTodosLosDatos[0])){
-                ultimaOctava = alturaConTodosLosDatos[0];
-            }
+            //aplicamos redundancias de octavas (y resolvemos acordes/desplazamientos)
+            let resuelta = this.resolverAltura(this.AMSalturas[i], ultimaOctava);
+            ultimaOctava = resuelta.octava;
 
-            this.codigoPlano.alturas.push(alturaConTodosLosDatos);
+            this.codigoPlano.alturas.push(resuelta.codigo);
 
             //aplicamos redundancias de grupos irregulares
             let duracionConTodosLosDatos = this.AMSduraciones[i];
@@ -88,9 +83,97 @@ class AMSparser{
             }
             this.codigoPlano.duraciones.push(duracionConTodosLosDatos)
 
-            log(this.AMSalturas[i]+" "+this.AMSduraciones[i]+" => "+alturaConTodosLosDatos+" "+duracionConTodosLosDatos );
+            log(this.AMSalturas[i]+" "+this.AMSduraciones[i]+" => "+resuelta.codigo+" "+duracionConTodosLosDatos );
         }
 
+    }
+
+    /** Resuelve un token de altura (AMS) a su forma canónica plana, aplicando
+     *  redundancias de octava, desplazamientos (<, >, <<, >>) y acordes (con
+     *  puntos o concatenados: "4C.E.G.>C" ≡ "4CEG>C" ≡ "4CEG5C").
+     *  @param {String} raw token de altura sin espacios (ya en mayúsculas).
+     *  @param {String} ultimaOctava octava heredada del evento anterior ("" si no hay).
+     *  @returns {{codigo:String, octava:String}} "codigo" = alturas normalizadas
+     *    separadas por "." (ej. "4C.4E.4G.5C"); "octava" = nueva octava global
+     *    heredada (solo cambia si la 1ª nota del evento trae octava explícita).
+     *  Reglas de "R": sola = silencio; tras una nota = alteración (+1.5 semitonos);
+     *  cualquier otro uso (tras octava, como nota dentro de un acorde, como segunda
+     *  alteración, tras un desplazamiento) lanza un Error. */
+    resolverAltura(raw, ultimaOctava){
+        if(raw === "R"){ return {codigo:"R", octava: ultimaOctava}; }
+        if(typeof raw !== "string" || raw === ""){ throw new Error("AMS: altura vacía en '"+raw+"'."); }
+
+        const octavas = "12345678";
+        const notas = "ABCDEFG";
+        const alteraciones = "SWQUTVR";
+
+        let octavaLocal = ultimaOctava === "" ? null : parseInt(ultimaOctava, 10);
+        let primeraExplicita = null;
+        let primeraNota = true;
+        const pitches = [];
+        let i = 0;
+
+        while(i < raw.length){
+
+            //separador de acorde (sin huecos vacíos: ni al inicio, ni doble, ni al final)
+            if(raw[i] === "."){
+                if(pitches.length === 0 || i + 1 >= raw.length || raw[i+1] === "."){
+                    throw new Error("AMS: separador de acorde mal ubicado en '"+raw+"'.");
+                }
+                i++;
+                continue;
+            }
+
+            //desplazamiento(s) de octava (<, >)
+            let desplazamiento = 0;
+            while(raw[i] === ">" || raw[i] === "<"){
+                desplazamiento += (raw[i] === ">") ? 1 : -1;
+                i++;
+            }
+
+            //octava explícita
+            let octavaExplicita = null;
+            if(raw[i] !== undefined && octavas.includes(raw[i])){
+                octavaExplicita = parseInt(raw[i], 10);
+                i++;
+            }
+
+            //nota (la R no puede ocupar el lugar de la nota dentro de un evento)
+            const nota = raw[i];
+            if(nota === "R"){
+                throw new Error("AMS: 'R' debe ir sola (silencio) o como alteración tras una nota; en '"+raw+"'.");
+            }
+            if(nota === undefined || !notas.includes(nota)){
+                throw new Error("AMS: altura no reconocida en '"+raw+"' (después de '"+raw.slice(0, i)+"').");
+            }
+            i++;
+
+            //alteración opcional (la R tras una nota = +1.5 semitonos)
+            let alteracion = "";
+            if(alteraciones.includes(raw[i])){
+                alteracion = raw[i];
+                i++;
+            }
+
+            if(octavaExplicita !== null){
+                octavaLocal = octavaExplicita;
+                if(primeraNota){ primeraExplicita = octavaExplicita; }
+            }
+
+            //la octava efectiva = heredada/explícita + desplazamiento (limitada a 1..8)
+            let octava = octavaExplicita !== null ? octavaExplicita : octavaLocal;
+            octava = octava === null ? null : Math.max(1, Math.min(8, octava + desplazamiento));
+
+            pitches.push(octava === null ? (nota + alteracion) : (octava + nota + alteracion));
+            primeraNota = false;
+        }
+
+        if(pitches.length === 0){
+            throw new Error("AMS: altura no reconocida '"+raw+"'.");
+        }
+
+        //la octava global se hereda solo de la 1ª nota explícita del evento
+        return {codigo: pitches.join("."), octava: primeraExplicita !== null ? String(primeraExplicita) : ultimaOctava};
     }
 
     /** Convierte el texto de entrada en listas de alturas y duraciones.

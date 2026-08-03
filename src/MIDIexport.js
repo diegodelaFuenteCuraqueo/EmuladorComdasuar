@@ -130,16 +130,18 @@ class MIDIexport {
         emitirMeta(0, 0x03, asciiBytes((seq.getNombre() || "Track").trim()));
 
         for (const nota of seq.getNotas()){
-            const mc = nota.getMidicent();
-            if (mc <= 0) continue; // silencio
-            const midi = Math.round(mc / 100);
-            if (midi <= 0 || midi > 127) continue;
-
             const on = (nota.getInicio() / quarterMs) * PPQ;
             const off = ((nota.getInicio() + nota.getMS()) / quarterMs) * PPQ;
 
-            emitir(on, 0x90, midi, 0x50);
-            emitir(off, 0x80, midi, 0x00);
+            //los acordes suenan todas sus alturas a la vez (mismo inicio y duración)
+            for (const mc of nota.getMidicents()){
+                if (mc <= 0) continue; // silencio
+                const midi = Math.round(mc / 100);
+                if (midi <= 0 || midi > 127) continue;
+
+                emitir(on, 0x90, midi, 0x50);
+                emitir(off, 0x80, midi, 0x00);
+            }
         }
 
         emitirMeta(0, 0x2F, [0x00]);

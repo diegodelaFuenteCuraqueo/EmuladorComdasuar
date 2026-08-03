@@ -37,12 +37,12 @@ class Heuristicos{
     static retrogradarAlturas(AsuarSeq){
         log("\n [HEURISTICOS] ~ Retrogradación de alturas \n")
 
-        let midicents = [];
-        midicents = AsuarSeq.getMidicents();
-        log("    Alturas iniciales     : "+ midicents.join(" "));
+        //por evento: los acordes se retrogradan como bloques atómicos
+        let porEvento = AsuarSeq.getMidicentsPorEvento();
+        log("    Alturas iniciales     : "+ porEvento.map(e => "["+e.join(" ")+"]").join(" "));
 
-        AsuarSeq.setMidicents(midicents.reverse());
-        log("    Alturas retrogradadas : "+ midicents.join(" ")+"\n [H] \n");
+        AsuarSeq.setMidicentsPorEvento(porEvento.reverse());
+        log("    Alturas retrogradadas : "+ AsuarSeq.getMidicentsPorEvento().map(e => "["+e.join(" ")+"]").join(" ")+"\n [H] \n");
 
     }
 
@@ -67,9 +67,10 @@ class Heuristicos{
     static desordenarAlturas(AsuarSeq){
         log("\n [HEURISTICOS] ~ Desordenar de alturas \n")
 
-        let Alturas = AsuarSeq.getMidicents();
-        desordenar(Alturas);
-        AsuarSeq.setMidicents(Alturas);
+        //por evento: los acordes se mezclan como bloques atómicos (no se separan sus alturas)
+        let porEvento = AsuarSeq.getMidicentsPorEvento();
+        desordenar(porEvento);
+        AsuarSeq.setMidicentsPorEvento(porEvento);
     }
 
     /**

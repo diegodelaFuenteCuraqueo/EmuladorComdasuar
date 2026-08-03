@@ -112,7 +112,10 @@ class SecuenciaAsuar{
         log(`\n*** Cargando secuencia: ${seq.nombre}  (${seq.notas.length} notas)`)
         for(let n of seq.notas){
 
-            let nota = new NotaAsuar(n.altura.alturaAMS,n.duracion.duracionAMS);
+            const alturaAMS = (n.alturas && n.alturas.length > 0)
+                ? n.alturas.map(a => a.alturaAMS).join(".")
+                : n.altura.alturaAMS;
+            let nota = new NotaAsuar(alturaAMS,n.duracion.duracionAMS);
             nota.cargarNota(nota);
             this.notas.push(nota);
         }
@@ -157,14 +160,33 @@ class SecuenciaAsuar{
     }
 
     /**
-     * @param {array} mcs arreglo con midicents. Reemplazará los midicents actuales
+     * @param {array} mcs arreglo con midicents (uno por altura, plano: los acordes
+     *                    aportan un midicent por altura). Se redistribuye sobre los
+     *                    eventos según el número de alturas de cada uno.
      */
     setMidicents(mcs){
         let contador = 0;
         for(let nota of this.notas){
-            if(mcs[contador] != undefined && mcs[contador] != null){
-                nota.altura.setMidicent( mcs[contador++] );
+            const n = nota.getAlturas().length;
+            const slice = mcs.slice(contador, contador + n);
+            if(slice.length > 0){
+                nota.setMidicents(slice);
             }
+            contador += n;
+        }
+    }
+
+    /** @returns {array} arreglo con los midicents de cada evento (acorde = varios midicents). */
+    getMidicentsPorEvento(){
+        return this.notas.map(n => n.getMidicents());
+    }
+
+    /** @param {array} arrays arreglo de arreglos (un array de midicents por evento).
+     *  Define exactamente las alturas de cada evento (los acordes se crean/eliminan
+     *  según la cantidad de midicents de cada array). */
+    setMidicentsPorEvento(arrays){
+        for(let i = 0; i < this.notas.length && i < arrays.length; i++){
+            this.notas[i].setAcorde(arrays[i]);
         }
     }
     // GETTERS - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
@@ -175,18 +197,19 @@ class SecuenciaAsuar{
     getBachDuraciones(){
         let arrNotas = [];
         for(let nota of this.notas){
-            if(nota.altura.alturaAMS.includes("R")) { continue; }
+            if(nota.getMidicent() <= 0) { continue; } // silencio (midicent <= 0)
             arrNotas.push(nota.getMS());
         }
         return "("+arrNotas.join(" ")+")";
     }
 
-    /** @returns {string} Lista de midicents en formato Bach  (incluye paréntesis e ignora silencios) */
+    /** @returns {string} Lista de midicents en formato Bach (incluye paréntesis,
+     *  ignora silencios y expande los acordes: una entrada por altura). */
     getBachMidicents(){
         let arrMidic = [];
         for(let nota of this.notas){
-            if(nota.altura.alturaAMS.includes("R")) { continue; }
-            arrMidic.push(nota.getMidicent());
+            if(nota.getMidicent() <= 0) { continue; } // silencio (midicent <= 0)
+            arrMidic = arrMidic.concat(nota.getMidicents());
         }
         return "("+arrMidic.join(" ")+")";
     }
@@ -195,15 +218,16 @@ class SecuenciaAsuar{
     getBachInicios(){
         let arrIni = [];
         for(let nota of this.notas){
-            if(nota.altura.alturaAMS.includes("R")) { continue; }
+            if(nota.getMidicent() <= 0) { continue; } // silencio (midicent <= 0)
             arrIni.push(nota.getInicio());
         }
         return "("+arrIni.join(" ")+")";
     }
-    /** @returns {array} arreglo con midicents de la secuencia (incluye paréntesis e ignora silencios) */
+    /** @returns {array} arreglo con midicents de la secuencia (plano: los acordes
+     *  aportan un midicent por altura; los silencios valen 0). */
     getMidicents(){
         let mc = [];
-        for(let nota of this.notas){    mc.push(nota.getMidicent());}
+        for(let nota of this.notas){    mc = mc.concat(nota.getMidicents());}
         return mc;
     }
     /** @returns {array} arreglo con duraciones de la secuencia       */
