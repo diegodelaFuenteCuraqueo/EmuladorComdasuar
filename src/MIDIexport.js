@@ -53,13 +53,63 @@ class MIDIexport {
         return MIDIexport.bancos2mid([seq]);
     }
 
-    /** Etiqueta `banco_secuencia` para una secuencia dentro de un banco.
-     *  Se usa como nombre de archivo en el ZIP exportado. */
+    /** Etiqueta para una secuencia dentro de un banco. Se usa como nombre de
+     *  archivo en el ZIP exportado.
+     *  Si el banco y/o la secuencia tienen un nombre propio (no el de defecto),
+     *  devuelve `<nombreBanco>_<nombreSecuencia>` (saneados); en caso contrario
+     *  vuelve a la etiqueta numérica de siempre `<indiceBanco>_<i>`. */
     static etiquetaSecuencia(banco, i){
+        const seq = (banco && Array.isArray(banco.secuencias) && banco.secuencias[i]) ? banco.secuencias[i] : null;
+
+        let nombreBanco = (banco && typeof banco.getNombre === "function") ? banco.getNombre() : "";
+        let nombreSeq = (seq && typeof seq.getNombre === "function") ? seq.getNombre() : "";
+
+        nombreBanco = MIDIexport.sanitizarNombre(nombreBanco);
+        nombreSeq = MIDIexport.sanitizarNombre(nombreSeq);
+        if (MIDIexport.esNombrePorDefecto(nombreBanco)) nombreBanco = "";
+        if (MIDIexport.esNombrePorDefecto(nombreSeq)) nombreSeq = "";
+
+        if (nombreSeq){
+            return nombreBanco ? nombreBanco + "_" + nombreSeq : nombreSeq;
+        }
+
         const bancoIdx = (banco && typeof banco.getIndice === "function" && banco.getIndice() >= 0)
             ? banco.getIndice()
             : 0;
         return bancoIdx + "_" + i;
+    }
+
+    /** Sanea un nombre para poder usarlo como nombre de archivo: elimina
+     *  caracteres ilegales en nombres de archivo (`/\:*?"<>|`), caracteres de
+     *  control, puntos finales y espacios redundantes. Vacío si no queda nada. */
+    static sanitizarNombre(nombre){
+        if (typeof nombre !== "string") return "";
+        return nombre
+            .replace(/[\\/:*?"<>|\u0000-\u001F\u007F]+/g, "_")
+            .replace(/\s+/g, " ")
+            .trim()
+            .replace(/^\.+|\.+$/g, "");
+    }
+
+    /** Detecta los nombres que la librería asigna por defecto a bancos y
+     *  secuencias (cuando nadie les puso uno propio). Esos no se usan como
+     *  nombre de archivo en la exportación: se cae a la etiqueta numérica. */
+    static esNombrePorDefecto(nombre){
+        if (typeof nombre !== "string") return true;
+        nombre = nombre.trim();
+        if (nombre === "") return true;
+        return /^\[Asuar(Bank|Seq)\]$/.test(nombre) || /^AsuarSeq(_\d+)?$/.test(nombre);
+    }
+
+    /** Nombre base (sin extensión) para el archivo MIDI de un banco entero:
+     *  el nombre propio del banco si lo tiene (saneado), o `"comdasuar"`. */
+    static nombreArchivoBanco(banco){
+        let nombre = "";
+        if (banco && typeof banco.getNombre === "function"){
+            nombre = MIDIexport.sanitizarNombre(banco.getNombre());
+            if (MIDIexport.esNombrePorDefecto(nombre)) nombre = "";
+        }
+        return nombre || "comdasuar";
     }
 
     /** Convierte un banco completo a un ZIP con un archivo .mid por secuencia.

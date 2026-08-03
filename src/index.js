@@ -28,6 +28,7 @@ import {crearZip, crc32} from './zip.js';
 import Heuristicos from './Heuristicos.js';
 import Persistencia from './Persistencia.js';
 import util from './util.js';
+import {ResaltadorAMS} from './gui/ResaltadorAMS.js';
 
 export default {
     EmuladorComdasuar,
@@ -44,6 +45,7 @@ export default {
     Persistencia,
     crearZip,
     crc32,
+    ResaltadorAMS,
     DEBUG: util.DEBUG,
     setDebug: util.setDebug,
     log: util.log,

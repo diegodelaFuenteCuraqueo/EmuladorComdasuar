@@ -89,6 +89,64 @@ test('etiquetaSecuencia usa indices banco/seq', () => {
     assert.strictEqual(MIDIexport.etiquetaSecuencia([1, 2], 1), '0_1');
 });
 
+test('etiquetaSecuencia usa los nombres propios de banco y secuencia', () => {
+    const banco = new BancoDeSecuencias('Mi Banco');
+    banco.setIndice(2);
+    banco.addSeqAMS('j1 n 4c 4d 4e');
+    banco.getSeq(0).setNombre('Melodía');
+    assert.strictEqual(MIDIexport.etiquetaSecuencia(banco, 0), 'Mi Banco_Melodía');
+
+    banco.setNombre('[AsuarBank] ');   // nombre por defecto: no cuenta
+    assert.strictEqual(MIDIexport.etiquetaSecuencia(banco, 0), 'Melodía');
+});
+
+test('etiquetaSecuencia ignora nombres por defecto y vuelve a los indices', () => {
+    const banco = new BancoDeSecuencias('x');
+    banco.addSeqAMS('j1 n 4c 4d 4e');   // addSeq asigna "AsuarSeq_0"
+    banco.setIndice(2);
+    assert.strictEqual(MIDIexport.etiquetaSecuencia(banco, 0), '2_0');
+});
+
+test('etiquetaSecuencia saneja caracteres ilegales del nombre', () => {
+    const banco = new BancoDeSecuencias('A/B:C');
+    banco.addSeqAMS('j1 n 4c');
+    banco.getSeq(0).setNombre('canción?');
+    assert.strictEqual(MIDIexport.etiquetaSecuencia(banco, 0), 'A_B_C_canción_');
+});
+
+test('sanitizarNombre y esNombrePorDefecto', () => {
+    assert.strictEqual(MIDIexport.sanitizarNombre('  Mi  Banco '), 'Mi Banco');
+    assert.strictEqual(MIDIexport.sanitizarNombre('a/b\\c:d*e?f"g<h>i|'), 'a_b_c_d_e_f_g_h_i_');
+    assert.strictEqual(MIDIexport.sanitizarNombre('..hola..'), 'hola');
+    assert.strictEqual(MIDIexport.sanitizarNombre(''), '');
+    assert.strictEqual(MIDIexport.sanitizarNombre(42), '');
+
+    assert.strictEqual(MIDIexport.esNombrePorDefecto(''), true);
+    assert.strictEqual(MIDIexport.esNombrePorDefecto('[AsuarBank] '), true);
+    assert.strictEqual(MIDIexport.esNombrePorDefecto('[AsuarSeq] '), true);
+    assert.strictEqual(MIDIexport.esNombrePorDefecto('AsuarSeq_3'), true);
+    assert.strictEqual(MIDIexport.esNombrePorDefecto('Melodía'), false);
+});
+
+test('nombreArchivoBanco devuelve el nombre propio o comdasuar', () => {
+    assert.strictEqual(MIDIexport.nombreArchivoBanco(new BancoDeSecuencias('Mi Banco')), 'Mi Banco');
+    assert.strictEqual(MIDIexport.nombreArchivoBanco(new BancoDeSecuencias()), 'comdasuar');
+    assert.strictEqual(MIDIexport.nombreArchivoBanco(new BancoDeSecuencias('[AsuarBank] ')), 'comdasuar');
+    assert.strictEqual(MIDIexport.nombreArchivoBanco(null), 'comdasuar');
+});
+
+test('bancos2zip usa los nombres de banco y secuencia', () => {
+    const banco = new BancoDeSecuencias('Concierto');
+    banco.addSeqAMS('j1 n 4c 4d 4e');
+    banco.addSeqAMS('j1 n 4f 4g 4a');
+    banco.getSeq(0).setNombre('Adagio');
+    banco.getSeq(1).setNombre('Allegro');
+
+    const zip = MIDIexport.bancos2zip(banco);
+    const entradas = leerZIP(zip);
+    assert.deepStrictEqual(entradas.map(e => e.nombre), ['Concierto_Adagio.mid', 'Concierto_Allegro.mid']);
+});
+
 test('Persistencia.guardarZIP escribe y lee un ZIP real', () => {
     const banco = new BancoDeSecuencias('Test');
     banco.addSeqAMS('j1 n 4c 4d 4e');

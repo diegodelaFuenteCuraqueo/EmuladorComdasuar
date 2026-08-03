@@ -20,11 +20,42 @@
   label { font-size:12px; opacity:.8; }
   pre#info { background:#191926; padding:10px; border-radius:6px; overflow:auto; white-space:pre-wrap; margin:0; font-size:12px; }
   table { border-collapse:collapse; width:100%; font-size:12px; }
+  .tabla-scroll { width:100%; overflow-x:auto; }
   th, td { border:1px solid var(--borde); padding:3px 8px; text-align:left; }
   th { background:#191926; }
   .heuristicos .grupo { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center; }
   .heuristicos input { width:90px; }
   #volumen { width:120px; }
+
+  /* - - - editor AMS con sintaxis coloreada (overlay) - - - */
+  .editor { position:relative; height:130px; min-height:130px; resize:vertical; overflow:hidden; }
+  .editor pre, .editor textarea {
+    position:absolute; inset:0; margin:0; padding:8px;
+    font-family:inherit; font-size:13px; line-height:1.5;
+    letter-spacing:normal; tab-size:4;
+    border:1px solid var(--borde); border-radius:6px;
+    box-sizing:border-box;
+    white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word;
+  }
+  .editor pre { background:#191926; overflow:hidden; pointer-events:none; color:var(--texto); }
+  .editor.dragover { outline:2px dashed var(--acento); outline-offset:-2px; }
+  .editor textarea { width:100%; resize:none; background:transparent;
+    color:transparent; caret-color:var(--texto); -webkit-text-fill-color:transparent; }
+  .ams-modo     { color:#c8a2e8; }
+  .ams-altura   { color:#a6e3a1; }
+  .ams-duracion { color:#89b4fa; }
+  .ams-repetir  { color:#cdd6f4; }
+  .ams-error    { color:#f38ba8; text-decoration:underline wavy #f38ba8; }
+  #editorError  { display:none; color:#f38ba8; font-size:12px; margin-top:6px; white-space:pre-wrap; }
+
+  @media (max-width:640px){
+    body { padding:10px; }
+    h1 { font-size:16px; }
+    .fila, .heuristicos .grupo { gap:6px; }
+    .fila button, .heuristicos .grupo button { flex:1 1 auto; }
+    .fila select, .fila input, .heuristicos .grupo input { flex:1 1 auto; min-width:0; }
+    #volumen { width:100%; }
+  }
 </style>
 </head>
 <body>
@@ -45,7 +76,16 @@ Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://
     <select id="scoresSel"></select>
     <button id="btnCargarScore">Cargar en editor</button>
   </div>
-  <textarea id="partitura">j1 n 6b 3as 5e 4f 3ew d 5aw 4a g 6fs 4c</textarea>
+  <div class="fila">
+    <button id="btnCargarArchivo">Cargar archivo…</button>
+    <input type="file" id="archivoInput" accept=".txt,.ams,.asc,text/plain" hidden>
+    <span id="archivoInfo" style="font-size:12px; opacity:.8"></span>
+  </div>
+  <div class="editor">
+    <pre id="resaltado" aria-hidden="true"></pre>
+    <textarea id="partitura" spellcheck="false" autocomplete="off" autocapitalize="off">j1 n 6b 3as 5e 4f 3ew d 5aw 4a g 6fs 4c</textarea>
+  </div>
+  <div id="editorError"></div>
   <div class="fila">
     <button id="btnAgregar">Agregar secuencia</button>
     <button id="btnReemplazar">Reemplazar secuencia actual</button>
@@ -90,10 +130,10 @@ Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://
     <button id="btnEliminarSeq">Eliminar</button>
   </div>
   <pre id="info">(sin secuencia)</pre>
-  <table id="notas">
+  <div class="tabla-scroll"><table id="notas">
     <thead><tr><th>#</th><th>Altura</th><th>Ritmo</th><th>MIDI-note</th><th>MIDI-cent</th><th>Dur. (ms)</th><th>Inicio</th><th>Fin</th></tr></thead>
     <tbody></tbody>
-  </table>
+  </table></div>
 </div>
 
 <div class="panel heuristicos">
@@ -153,9 +193,52 @@ Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://
 <script>
 "use strict";
 
-const {EmuladorComdasuar, Reproductor, MIDIexport} = window.comdasuar;
+const {EmuladorComdasuar, Reproductor, MIDIexport, ResaltadorAMS} = window.comdasuar;
 const comdasuar = new EmuladorComdasuar();
 let reproductor = null;
+const resaltador = new ResaltadorAMS();
+
+// - - - sintaxis coloreada del editor AMS - - - - - - - - - - - - - - - - - - - - //
+function escaparHTML(s){
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderizarResaltado(){
+    const ta = document.getElementById('partitura');
+    const pre = document.getElementById('resaltado');
+    const valor = ta.value;
+    let html = '';
+    for (const seg of resaltador.resaltar(valor)){
+        if (seg.tipo === 'texto'){
+            html += escaparHTML(seg.texto);
+            continue;
+        }
+        html += '<span class="ams-' + seg.tipo + '">' + escaparHTML(seg.texto) + '</span>';
+    }
+    //una línea final vacía se vería con altura cero en el <pre>: la forzamos
+    if (valor === '' || /[\n\r]$/.test(valor)){
+        html += '\u200b';
+    }
+    pre.innerHTML = html;
+    sincronizarScroll();
+}
+
+function sincronizarScroll(){
+    const ta = document.getElementById('partitura');
+    document.getElementById('resaltado').scrollTop = ta.scrollTop;
+    document.getElementById('resaltado').scrollLeft = ta.scrollLeft;
+}
+
+function mostrarErrorEditor(msg){
+    const el = document.getElementById('editorError');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+}
+
+const editorTa = document.getElementById('partitura');
+editorTa.addEventListener('input', () => { mostrarErrorEditor(''); renderizarResaltado(); });
+editorTa.addEventListener('scroll', sincronizarScroll);
+renderizarResaltado();
 
 function etiquetaBancoSeq(bancoIndice, seqIndice){
     return bancoIndice + '_' + seqIndice;
@@ -286,13 +369,35 @@ async function cargarScores(){
     }
 }
 
+/** Vuelca un texto en el editor AMS y refresca el resaltado. */
+function ponerEnEditor(texto){
+    const ta = document.getElementById('partitura');
+    ta.value = texto;
+    ta.scrollTop = 0;
+    mostrarErrorEditor('');
+    renderizarResaltado();
+}
+
+/** Lee un archivo de texto y lo vuelca en el editor. */
+function cargarArchivoEnEditor(file){
+    const lector = new FileReader();
+    lector.onload = () => {
+        ponerEnEditor(String(lector.result || ''));
+        document.getElementById('archivoInfo').textContent = file.name;
+    };
+    lector.onerror = () => {
+        mostrarErrorEditor('Error leyendo el archivo: ' + file.name);
+    };
+    lector.readAsText(file, 'utf-8');
+}
+
 async function cargarScoreSeleccionada(){
     const nombre = document.getElementById('scoresSel').value;
     if (!nombre) return;
     try {
         const res = await fetch('/api/scores/' + encodeURIComponent(nombre));
         const data = await res.json();
-        document.getElementById('partitura').value = data.ams || '';
+        ponerEnEditor(data.ams || '');
     } catch (e){ /* servidor caído */ }
 }
 
@@ -319,7 +424,7 @@ function descargarZIP(){
         return;
     }
     const zip = MIDIexport.bancos2zip(banco);
-    MIDIexport.descargar(zip, 'comdasuar_bancos.zip');
+    MIDIexport.descargar(zip, MIDIexport.nombreArchivoBanco(banco) + '_bancos.zip');
     const nombres = banco.secuencias.map((s, i) => MIDIexport.etiquetaSecuencia(banco, i) + '.mid').join(', ');
     document.getElementById('midiInfo').textContent = banco.getSize() + ' secuencia(s) -> ' + zip.length + ' bytes (' + nombres + ')';
 }
@@ -331,7 +436,7 @@ function descargarMIDI(){
         return;
     }
     const bytes = MIDIexport.bancos2mid(banco);
-    MIDIexport.descargar(bytes, 'comdasuar.mid');
+    MIDIexport.descargar(bytes, MIDIexport.nombreArchivoBanco(banco) + '.mid');
     document.getElementById('midiInfo').textContent = banco.getSize() + ' secuencia(s) -> ' + bytes.length + ' bytes (SMF formato 1, PPQ 480)';
 }
 
@@ -348,15 +453,25 @@ document.getElementById('btnNuevoBanco').addEventListener('click', () => {
 document.getElementById('btnAgregar').addEventListener('click', () => {
     const txt = document.getElementById('partitura').value.trim();
     if (!txt) return;
-    comdasuar.nuevaPartituraAMS(txt);
-    refrescarTodo();
+    try {
+        comdasuar.nuevaPartituraAMS(txt);
+        mostrarErrorEditor('');
+        refrescarTodo();
+    } catch (e) {
+        mostrarErrorEditor('Error AMS: ' + e.message);
+    }
 });
 
 document.getElementById('btnReemplazar').addEventListener('click', () => {
     const txt = document.getElementById('partitura').value.trim();
     if (!txt) return;
-    comdasuar.reemplazarPartituraAMS(txt);
-    refrescarTodo();
+    try {
+        comdasuar.reemplazarPartituraAMS(txt);
+        mostrarErrorEditor('');
+        refrescarTodo();
+    } catch (e) {
+        mostrarErrorEditor('Error AMS: ' + e.message);
+    }
 });
 
 document.getElementById('bancoSel').addEventListener('change', (e) => {
@@ -373,6 +488,36 @@ document.getElementById('seqSel').addEventListener('change', (e) => {
 document.getElementById('transmuta_banco').addEventListener('change', refreshTransmutaOrigen);
 
 document.getElementById('btnCargarScore').addEventListener('click', cargarScoreSeleccionada);
+
+// - - - carga de archivo local (botón + arrastrar y soltar) - - - - - - - - - - //
+const btnCargarArchivo = document.getElementById('btnCargarArchivo');
+const archivoInput = document.getElementById('archivoInput');
+btnCargarArchivo.addEventListener('click', () => archivoInput.click());
+archivoInput.addEventListener('change', () => {
+    if (archivoInput.files && archivoInput.files[0]) cargarArchivoEnEditor(archivoInput.files[0]);
+    archivoInput.value = '';
+});
+
+const editor = document.querySelector('.editor');
+let dragCounter = 0;
+editor.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    editor.classList.add('dragover');
+});
+editor.addEventListener('dragover', (e) => e.preventDefault());
+editor.addEventListener('dragleave', () => {
+    dragCounter = Math.max(0, dragCounter - 1);
+    if (dragCounter === 0) editor.classList.remove('dragover');
+});
+editor.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    editor.classList.remove('dragover');
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) cargarArchivoEnEditor(file);
+});
+
 document.getElementById('btnPlay').addEventListener('click', reproducir);
 document.getElementById('btnStop').addEventListener('click', detener);
 document.getElementById('btnDescargarZIP').addEventListener('click', descargarZIP);

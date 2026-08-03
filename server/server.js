@@ -11,10 +11,10 @@
  * probar el parseo, las heurísticas y la exportación MIDI desde la terminal o curl.
  *
  *   npm run dev
- *   GET  /                             -> test/manual.html
- *   GET  /comdasuar.browser.js         -> bundle del navegador
- *   GET  /api/scores                   -> { scores: [nombres] }
- *   GET  /api/scores/:nombre           -> { nombre, ams }
+ *   GET  /                     -> test/manual.html
+ *   GET  /comdasuar.js         -> bundle UMD (dist/comdasuar.js)
+ *   GET  /api/scores           -> { scores: [nombres] }
+ *   GET  /api/scores/:nombre   -> { nombre, ams }
  *   GET  /api/scores/:nombre/midi      -> archivo .mid (una secuencia)
  *   POST /api/sequence   { ams }       -> datos de la secuencia compilada
  *   POST /api/heuristic  { ams, op, params?, amsB? } -> secuencia transformada
@@ -36,7 +36,7 @@ const PUERTO = process.env.PORT || 3000;
 const RAIZ = path.join(__dirname, '..');
 const DIR_SCORES = path.join(RAIZ, 'test', 'scores');
 const ARCHIVO_MANUAL = path.join(RAIZ, 'test', 'manual.html');
-const ARCHIVO_BUNDLE = path.join(RAIZ, 'test', 'comdasuar.browser.js');
+const ARCHIVO_BUNDLE = path.join(RAIZ, 'dist', 'comdasuar.js');
 
 const TIPOS = {
     '.html': 'text/html; charset=utf-8',
@@ -144,7 +144,7 @@ const servidor = http.createServer(async (req, res) => {
         if (ruta === '/' || ruta === '/index.html'){
             return responderArchivo(res, ARCHIVO_MANUAL);
         }
-        if (ruta === '/comdasuar.browser.js'){
+        if (ruta === '/comdasuar.js'){
             return responderArchivo(res, ARCHIVO_BUNDLE);
         }
 

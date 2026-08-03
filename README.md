@@ -19,7 +19,7 @@ El núcleo de la librería (`src/`) no depende de `fs` ni de ninguna API de Node
 ```bash
 npm test                # 1. tests unitarios (runner nativo node:test, sin dependencias)
 npm run dev             # 2. servidor de desarrollo -> http://localhost:3000
-npm run build:browser   # 3. (solo tras tocar src/) regenerar el bundle del navegador
+npm run build             # 3. (solo tras tocar src/) regenerar el bundle (dist/comdasuar.js)
 ```
 
 # Ejemplo de uso
@@ -57,24 +57,30 @@ Persistencia.guardarAdmin(comdasuar.ADMIN, './bancos.json')  // guarda en archiv
 
 ## Uso en navegador
 
-Se incluye un bundle para `<script>` generado desde los módulos de `src/`:
+Se incluye un bundle UMD único (`dist/comdasuar.js`) generado con Rollup desde los módulos de `src/`. Funciona tanto vía `<script>` como vía `require()` en Node:
 
 ```html
-<script src="test/comdasuar.browser.js"></script>
+<script src="comdasuar.js"></script>
 <script>
-  const comdasuar = new EmuladorComdasuar();
-  comdasuar.nuevaPartituraAMS("j1 n 6b 3as 5e 4f 3ew d 5aw 4a g 6fs 4c");
-  console.log(comdasuar.editSeq().getMidicents());
+  const {EmuladorComdasuar} = window.comdasuar;
+  const emu = new EmuladorComdasuar();
+  emu.nuevaPartituraAMS("j1 n 6b 3as 5e 4f 3ew d 5aw 4a g 6fs 4c");
+  console.log(emu.editSeq().getMidicents());
 </script>
 ```
 
-El bundle expone en `window` las clases `EmuladorComdasuar`, `AMSparser`, `BancoDeSecuencias`, `SecuenciaAsuar`, `NotaAsuar`, `Reproductor`, `MIDIexport` y `DiccionarioAsuar`. Para regenerarlo tras cambios en `src/`:
+```javascript
+const comdasuar = require('emuladorcomdasuar');
+const seq = comdasuar.BancoDeSecuencias.secuenciaDesdeAMS('4C N 4E S');
+```
+
+El bundle expone en `window.comdasuar` (o como export del paquete) un único objeto con todas las clases públicas: `EmuladorComdasuar`, `AMSparser`, `BancoDeSecuencias`, `SecuenciaAsuar`, `NotaAsuar`, `Reproductor`, `MIDIexport`, `AdministradorDeBancos`, `Heuristicos`, `DiccionarioAsuar`, `getDiccionarioAsuar`, `Persistencia`, `ResaltadorAMS`, `crearZip` y `crc32`. `Persistencia` usa `fs` (solo Node); en el navegador el bundle carga igual y solo falla si se invoca. Para regenerarlo tras cambios en `src/`:
 
 ```
-npm run build:browser
+npm run build
 ```
 
-Puedes probar las propiedades básicas de la librería manualmente abriendo `test/manual.html` en un navegador.
+Puedes probar las propiedades básicas de la librería manualmente abriendo `test/manual.html` en un navegador (vía `npm run dev`, o con `file://` si el bundle está disponible junto al archivo).
 
 Los logs de depuración internos de la librería están desactivados por defecto; actívalos con `EmuladorComdasuar.setDebug(true)`.
 
@@ -115,7 +121,7 @@ MIDIexport.descargar(bytes, 'banco.mid');
 
 ### ZIP con un `.mid` por secuencia
 
-`MIDIexport.bancos2zip(banco)` empaqueta cada secuencia como su propio archivo SMF y los comprime en un ZIP (entradas sin comprimir, compatibles con cualquier descompresor). Cada archivo se llama con la etiqueta `banco_secuencia` (p. ej. `0_0.mid`, `0_1.mid`):
+`MIDIexport.bancos2zip(banco)` empaqueta cada secuencia como su propio archivo SMF y los comprime en un ZIP (entradas sin comprimir, compatibles con cualquier descompresor). Cada archivo se llama con la etiqueta `banco_secuencia`; si el banco o la secuencia tienen un nombre propio (no el de fábrica), ese nombre se usa en lugar del índice (p. ej. `Mi banco_La escala.mid`, `0_La escala.mid`, o `0_0.mid` si ambos son los de fábrica):
 
 ```javascript
 const { BancoDeSecuencias, MIDIexport } = require('./src/BancoDeSecuencias.js');
@@ -123,17 +129,45 @@ const Persistencia = require('./src/Persistencia.js');
 
 const banco = new BancoDeSecuencias();
 banco.setIndice(2);
+banco.setNombre('Fantasía');
 banco.addSeqAMS('4C N 4E S');
 banco.addSeqAMS('5A B 3G C');
 
-// Node: guarda un ZIP con 2_0.mid y 2_1.mid
+// Node: guarda un ZIP con Fantasía_AsuarSeq_0.mid y Fantasía_AsuarSeq_1.mid
 Persistencia.guardarZIP(MIDIexport.bancos2zip(banco), './bancos.zip');
 
 // Navegador: descarga el ZIP
 MIDIexport.descargar(MIDIexport.bancos2zip(banco), 'bancos.zip');
 ```
 
-La etiqueta se obtiene con `MIDIexport.etiquetaSecuencia(banco, i)` y no depende del nombre de la secuencia: es siempre `{indiceBanco}_{indiceSecuencia}`.
+La etiqueta se obtiene con `MIDIexport.etiquetaSecuencia(banco, i)`. Cuando el banco o la secuencia conservan el nombre de fábrica (`[AsuarBank] `, `[AsuarSeq] ` o `AsuarSeq_n`), el nombre se ignora y se usa su índice; en cuanto se les da un nombre propio, la etiqueta pasa a ser `<nombreBanco>_<nombreSecuencia>`. Los nombres se sanean para los nombres de archivo (se quitan `/\:*?"<>|` y caracteres de control, se colapsan espacios y se recortan los puntos iniciales y finales).
+
+### Resaltado de sintaxis AMS (`ResaltadorAMS`)
+
+`src/gui/ResaltadorAMS.js` es un **resaltador de sintaxis** (una clase de visualización, independiente del parser): recorre el código Asuar y devuelve segmentos clasificados para colorearlo, siguiendo exactamente el mismo estado que `AMSparser.compilar()` (modos `J0`/`J1`/`J2`, argumentos de los comandos, cambios de tempo y operador `/`). El alfabeto (notas, alteraciones, figuras, octavas, subdivisones) se toma de `getDiccionarioAsuar()` para no duplicarlo.
+
+```javascript
+const { ResaltadorAMS } = require('./src/gui/ResaltadorAMS.js');
+
+const resaltador = new ResaltadorAMS();
+const segmentos = resaltador.resaltar('J0 4C r 4D r');   // [{tipo, texto}...]
+// [{tipo:'modo', texto:'J0'}, {tipo:'texto', texto:' '},
+//  {tipo:'altura', texto:'4C'}, {tipo:'texto', texto:' '},
+//  {tipo:'duracion', texto:'r'}, {tipo:'texto', texto:' '}, ...]
+```
+
+Los segmentos son contiguos y reconstruyen el texto original exactamente (incluyendo mayúsculas y espacios), así que se puede superponer un `<pre>` coloreado bajo un `<textarea>` transparente para editar con resaltado en vivo. Los tipos son:
+
+| Tipo          | Color (en `test/manual.html`) | Significado                                        |
+|---------------|-------------------------------|----------------------------------------------------|
+| `modo`        | púrpura                       | comandos `J..` y sus argumentos, cambios de tempo (`N=60`) |
+| `altura`      | verde                         | altura, silencio o acorde en posición de altura    |
+| `duracion`    | azul                          | figura, grupo o puntillo en posición de duración   |
+| `repetir`     | neutro                        | el operador `/` (repite la altura/duración previa) |
+| `error`       | rojo (subrayado ondulado)     | palabra que no encaja en su posición               |
+| `texto`       | sin color                     | espacios y saltos de línea                         |
+
+En el modo `J0` el resaltador alterna posición de altura y duración (como el parser, que lee pares altura-duración); con `J1` (duración constante) solo hay alturas, y con `J2` (altura constante) solo duraciones. Los métodos públicos `esAltura(texto)`, `esDuracion(texto)` y `esRest(texto)` permiten validar una palabra suelta.
 
 ### Edición de secuencias y bancos (métodos)
 
@@ -179,6 +213,7 @@ Cobertura por archivo (`test/unit/`):
 | `heuristicos.test.js`     | Transportar, invertir, retrogradar, expandir, desordenar, transmutar       |
 | `midi.test.js`            | Salida SMF byte a byte: cabecera, tempo meta, ticks, silencios, PPQ 480    |
 | `zip.test.js`             | CRC-32, estructura ZIP, `bancos2zip` (un `.mid` por secuencia), `guardarZIP` |
+| `resaltador.test.js`      | `ResaltadorAMS`: segmentos, modos J0-J2, tempo, `/`, errores, `esAltura`/`esDuracion` |
 | `edicion.test.js`         | `clone`, `deleteSeq`/`duplicarSeq`, `deleteBanco`, métodos de fachada      |
 | `reproductor.test.js`     | `midicent2hz`, comportamiento en Node (sin AudioContext)                   |
 
@@ -265,11 +300,25 @@ unzip -p bancos.zip 1_0.mid | xxd -l 14   # cada entrada es un SMF válido (MThd
 
 ### 5. Bundle del navegador
 
-El archivo `test/comdasuar.browser.js` se genera desde los módulos de `src/` con un mini-empaquetador (sin bundlers externos). Regenerarlo tras cambios en `src/`:
+El archivo `dist/comdasuar.js` (y su versión minificada `dist/comdasuar.min.js`) se genera con Rollup (UMD) desde el punto de entrada `src/index.js`. Regenerarlo tras cambios en `src/`:
 
 ```bash
-npm run build:browser
+npm run build
 ```
+
+Usar la librería desde el sitio desplegado con `<script>` (bundle UMD, expone el global `comdasuar`):
+
+```html
+<script src="https://delaefe.site/dev/ecomdasuar/comdasuar.js"></script>
+<script>
+  const {EmuladorComdasuar, Reproductor, MIDIexport} = window.comdasuar;
+  const comdasuar = new EmuladorComdasuar();
+</script>
+```
+
+- Dev: `https://delaefe.site/dev/ecomdasuar/comdasuar.js`
+- Producción (rama `master`): `https://delaefe.site/ecomdasuar/comdasuar.js`
+- Minificados: `comdasuar.min.js` en cada ruta
 
 ### 6. Deploy (entorno dev)
 
@@ -280,7 +329,7 @@ El workflow `.github/workflows/dev.yml` compila y despliega el sitio estático (
 | Problema                                   | Causa / solución                                                            |
 |--------------------------------------------|-----------------------------------------------------------------------------|
 | `EADDRINUSE` al levantar el servidor       | Puerto ocupado: usa `PORT=3001 npm run dev`                                  |
-| El navegador no refleja cambios de `src/`  | Bundle desactualizado: `npm run build:browser` y recargar la página          |
+| El navegador no refleja cambios de `src/`  | Bundle desactualizado: `npm run build` y recargar la página                  |
 | No hay audio al pulsar Reproducir          | WebAudio requiere un gesto del usuario; comprueba que no esté en pestaña silenciada |
 | Los silencios (R) no suenan                | Comportamiento esperado: ocupan tiempo pero no emiten tono                   |
 | El menú de partituras de ejemplo no aparece| Estás usando `file://`; abre la página a través de `npm run dev`              |
@@ -301,6 +350,13 @@ R = Silencio
 S = Sostenido
 W = Bemol
 Q = Becuadro
+
+#### Acordes y desplazamientos de octava
+
+- `<` y `>` bajan/suben una octava relativa a la última octava explícita; `<<` y `>>` dos. Afectan solo a la altura que acompañan (no cambian la octava heredada por las siguientes). El resultado se limita a las octavas 1–8.
+- Un acorde agrupa varias alturas separadas por `.` (los separadores son opcionales): `4C.E.G.>C` ≡ `4CEG>C` ≡ `4CEG5C`. Las alturas sin octava explícita heredan la última conocida dentro del acorde, y el acorde actualiza la octava global solo desde su primera altura explícita.
+- `R` es contextual: sola (`R`) = silencio; en posición de duración (`R`) = redonda (4000 ms); tras una nota (ej. `4CR`) = alteración de +3/4 de tono (+150 midicent, igual que `T`). Cualquier otro uso de `R` (tras una octava, como nota dentro de un acorde, o como segunda alteración) es un error de sintaxis.
+- Los acordes se tratan como bloques atómicos en `retrogradarAlturas` y `desordenarAlturas`; con las demás heurísticas (`transportar`, `invertir`, `expandirAlturas`, `transmutarAlturas`) se transforman todas sus alturas.
 
 ### Duraciones
 M = Semifusa
