@@ -155,8 +155,8 @@ class Heuristicos{
         log("    Alturas iniciales (A)       : "+ midicentsA.join(" ")+` (${midicentsA.length}) ` );
         log("    Alturas aplicadas (B)       : "+ midicentsB.join(" ")+` (${midicentsB.length}) ` );
 
-        let largoA = midicentsA.length + 1;
-        let largoB = midicentsB.length + 1;
+        let largoA = midicentsA.length;
+        let largoB = midicentsB.length;
 
         let contB = 0;
         for(let i = 0; i < largoA ; i++){
@@ -164,7 +164,7 @@ class Heuristicos{
             if(midicentsA[i] == 0){
                 continue;
             }else{
-                let alturaTransmutada = midicentsB[contB%largoB] ;
+                let alturaTransmutada = midicentsB.length > 0 ? midicentsB[contB%largoB] : midicentsA[i];
                 midicentsA[i] = alturaTransmutada;
                 contB++;
             }
@@ -186,11 +186,11 @@ class Heuristicos{
         log("    Duraciones iniciales (A)      : "+ milisegundosA.join(" ")+` (${milisegundosA.length}) ` );
         log("    Duraciones aplicadas (B)      : "+ milisegundosB.join(" ")+` (${milisegundosB.length}) `  );
 
-        let largoA = milisegundosA.length + 1;
-        let largoB = milisegundosB.length + 1;
+        let largoA = milisegundosA.length;
+        let largoB = milisegundosB.length;
 
         for(let i = 0; i < largoA; i++){
-            milisegundosA[i] = milisegundosB[i%largoB] ;
+            milisegundosA[i] = milisegundosB.length > 0 ? milisegundosB[i%largoB] : milisegundosA[i];
         }
         log("    Duraciones transmutadas (B->A): "+ milisegundosA.join(" ")+"\n [H] \n");
         AsuarSeqA.setDuraciones(milisegundosA);

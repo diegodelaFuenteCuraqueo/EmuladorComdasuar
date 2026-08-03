@@ -41,6 +41,26 @@ class AdministradorDeBancos{
         log("Nuevo BancoDeSecuencias creado : id "+this.bancoActual+" (seleccionado)");
     }
 
+    /** Elimina el banco del índice indicado y reindexa los restantes.
+     *  Si no queda ningún banco, se crea automáticamente uno vacío para que
+     *  editBanco()/selBanco() sigan funcionando.
+     *  @param {number} indice índice del banco a eliminar.
+     *  @returns {boolean} true si se eliminó. */
+    deleteBanco(indice){
+        if (indice < 0 || indice >= this.bancos.length) return false;
+        this.bancos.splice(indice, 1);
+        this.bancos.forEach((b, i) => b.setIndice(i));
+        if (this.bancos.length === 0){
+            this.bancos.push(new BancoDeSecuencias());
+            this.bancos[0].setIndice(0);
+        }
+        if (this.bancoActual >= this.bancos.length){
+            this.bancoActual = this.bancos.length - 1;
+        }
+        log(` Banco ${indice} eliminado (quedan ${this.bancos.length})`);
+        return true;
+    }
+
     getBancoActualIndex(){
         return this.bancoActual;
     }

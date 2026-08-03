@@ -27,15 +27,21 @@ const MODULOS = [
     'BancoDeSecuencias.js',
     'AdministradorDeBancos.js',
     'EmuladorComdasuar.js',
+    'Reproductor.js',
+    'zip.js',
+    'MIDIexport.js',
 ];
 
 const EXPORTADOS = {
-    'EmuladorComdasuar.js': 'EmuladorComdasuar',
-    'AMSparser.js': 'AMSparser',
-    'BancoDeSecuencias.js': 'BancoDeSecuencias',
-    'SecuenciaAsuar.js': 'SecuenciaAsuar',
-    'NotaAsuar.js': 'NotaAsuar',
-    'DiccionarioAsuar': 'DiccionarioAsuar',
+    'EmuladorComdasuar.js': ['EmuladorComdasuar'],
+    'AMSparser.js': ['AMSparser'],
+    'BancoDeSecuencias.js': ['BancoDeSecuencias'],
+    'SecuenciaAsuar.js': ['SecuenciaAsuar'],
+    'NotaAsuar.js': ['NotaAsuar'],
+    'Reproductor.js': ['Reproductor'],
+    'MIDIexport.js': ['MIDIexport'],
+    'zip.js': ['crearZip', 'crc32'],
+    'DiccionarioAsuar': ['DiccionarioAsuar'],
 };
 
 const header = `/* Bundle generado automáticamente para navegador (NO EDITAR).
@@ -64,11 +70,10 @@ for (const nombre of MODULOS){
 }
 
 let footer = '\n';
-for (const [nombre, exportado] of Object.entries(EXPORTADOS)){
-    if (nombre === 'DiccionarioAsuar'){
-        footer += `window.${exportado} = __require('./diccionarioAsuar.js').${exportado};\n`;
-    } else {
-        footer += `window.${exportado} = __require('./${nombre}').${exportado};\n`;
+for (const [nombre, exportados] of Object.entries(EXPORTADOS)){
+    const origen = nombre === 'DiccionarioAsuar' ? './diccionarioAsuar.js' : `./${nombre}`;
+    for (const simbolo of exportados){
+        footer += `window.${simbolo} = __require('${origen}').${simbolo};\n`;
     }
 }
 footer += '})();\n';

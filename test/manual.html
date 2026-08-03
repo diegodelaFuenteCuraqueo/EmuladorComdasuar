@@ -24,12 +24,14 @@
   th { background:#191926; }
   .heuristicos .grupo { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center; }
   .heuristicos input { width:90px; }
+  #volumen { width:120px; }
 </style>
 </head>
 <body>
 
 <h1>Emulador COMDASUAR — Test manual</h1>
-<p class="sub">Prueba interactiva de las propiedades básicas de la librería (parser AMS, secuencias, banco de secuencias y heurísticos).</p>
+<p class="sub">Parser AMS, secuencias, bancos, heurísticos, reproducción WebAudio y exportación MIDI.
+Cargado mejor vía <code>npm run dev</code> (http://localhost:3000); también funciona con <code>file://</code> (sin partituras de ejemplo).</p>
 
 <div class="fila">
   <label><input type="checkbox" id="chkDebug"> Logs de depuración</label>
@@ -38,6 +40,11 @@
 
 <div class="panel">
   <h2 style="margin-top:0">1. Partitura (código Asuar AMS)</h2>
+  <div class="fila" id="scoresPanel">
+    <label>Partituras de ejemplo:</label>
+    <select id="scoresSel"></select>
+    <button id="btnCargarScore">Cargar en editor</button>
+  </div>
   <textarea id="partitura">j1 n 6b 3as 5e 4f 3ew d 5aw 4a g 6fs 4c</textarea>
   <div class="fila">
     <button id="btnAgregar">Agregar secuencia</button>
@@ -55,6 +62,33 @@
 
 <div class="panel">
   <h2 style="margin-top:0">3. Propiedades de la secuencia seleccionada</h2>
+  <div class="fila">
+    <button id="btnPlay">▶ Reproducir</button>
+    <button id="btnStop">■ Detener</button>
+    <label>Tipo de onda:</label>
+    <select id="ondaSel">
+      <option value="sine">sine</option>
+      <option value="triangle">triangle</option>
+      <option value="square">square</option>
+      <option value="sawtooth">sawtooth</option>
+    </select>
+    <label>Volumen:</label>
+    <input type="range" id="volumen" min="0" max="1" step="0.05" value="0.25">
+  </div>
+
+  <div class="fila">
+    <label>Etiqueta:</label>
+    <span id="etiquetaSeq" style="font-weight:bold; color:var(--acento)">–</span>
+    <label>Banco:</label>
+    <input type="text" id="nombreBanco" size="24">
+    <button id="btnRenombrarBanco">Renombrar banco</button>
+    <button id="btnEliminarBanco">Eliminar banco</button>
+    <label>Secuencia:</label>
+    <input type="text" id="nombreSeq" size="24">
+    <button id="btnRenombrarSeq">Renombrar</button>
+    <button id="btnDuplicarSeq">Duplicar</button>
+    <button id="btnEliminarSeq">Eliminar</button>
+  </div>
   <pre id="info">(sin secuencia)</pre>
   <table id="notas">
     <thead><tr><th>#</th><th>Altura</th><th>Ritmo</th><th>MIDI-note</th><th>MIDI-cent</th><th>Dur. (ms)</th><th>Inicio</th><th>Fin</th></tr></thead>
@@ -103,11 +137,28 @@
   </div>
 </div>
 
+<div class="panel">
+  <h2 style="margin-top:0">5. Exportación MIDI</h2>
+  <p>El banco actual se exporta como un <b>ZIP con un archivo .mid por secuencia</b>
+  (etiquetados <code>banco_secuencia</code>, p. ej. <code>0_0.mid</code>). También se mantiene
+  la opción de un único SMF formato 1 con una pista por secuencia (PPQ 480).</p>
+  <div class="fila">
+    <button id="btnDescargarZIP">Descargar ZIP (1 .mid por secuencia)</button>
+    <button id="btnDescargarMIDI">Descargar MIDI (banco, formato 1)</button>
+    <span id="midiInfo"></span>
+  </div>
+</div>
+
 <script src="./comdasuar.browser.js"></script>
 <script>
 "use strict";
 
 const comdasuar = new EmuladorComdasuar();
+let reproductor = null;
+
+function etiquetaBancoSeq(bancoIndice, seqIndice){
+    return bancoIndice + '_' + seqIndice;
+}
 
 function setInfo(texto){
     document.getElementById('info').textContent = texto;
@@ -129,12 +180,15 @@ function refreshBancos(){
 function refreshSecuencias(){
     const sel = document.getElementById('seqSel');
     sel.innerHTML = '';
-    for (const etiqueta of comdasuar.ADMIN.getEtiquetasSecuencias()){
-        const [i, ...nombre] = etiqueta.split(' ');
-        const opt = document.createElement('option');
-        opt.value = i;
-        opt.textContent = i + ' - ' + nombre.join(' ');
-        sel.appendChild(opt);
+    const bi = comdasuar.ADMIN.getBancoActualIndex();
+    const banco = comdasuar.ADMIN.bancos[bi];
+    if (banco){
+        banco.secuencias.forEach((s, si) => {
+            const opt = document.createElement('option');
+            opt.value = si;
+            opt.textContent = etiquetaBancoSeq(bi, si) + ' · ' + s.getNombre();
+            sel.appendChild(opt);
+        });
     }
     if (sel.options.length) sel.value = comdasuar.editBanco().getSecuenciaActualIndex();
     refreshTransmutaOrigen();
@@ -152,16 +206,29 @@ function refreshTransmutaOrigen(){
     const sSel = document.getElementById('transmuta_seq');
     sSel.innerHTML = '';
     const bi = parseInt(bSel.value || 0);
-    comdasuar.ADMIN.bancos[bi].secuencias.forEach((s, j) => {
-        const opt = document.createElement('option');
-        opt.value = j;
-        opt.textContent = j + ' - ' + s.getNombre();
-        sSel.appendChild(opt);
-    });
+    if (comdasuar.ADMIN.bancos[bi]){
+        comdasuar.ADMIN.bancos[bi].secuencias.forEach((s, j) => {
+            const opt = document.createElement('option');
+            opt.value = j;
+            opt.textContent = j + ' - ' + s.getNombre();
+            sSel.appendChild(opt);
+        });
+    }
 }
 
 function showInfo(){
     const seq = comdasuar.editSeq();
+    const banco = comdasuar.editBanco();
+    document.getElementById('nombreBanco').value = banco ? banco.getNombre() : '';
+    if (!seq){
+        document.getElementById('etiquetaSeq').textContent = '–';
+        document.getElementById('nombreSeq').value = '';
+        setInfo('(sin secuencia)');
+        document.querySelector('#notas tbody').innerHTML = '';
+        return;
+    }
+    document.getElementById('etiquetaSeq').textContent = etiquetaBancoSeq(comdasuar.ADMIN.getBancoActualIndex(), seq.getIndice());
+    document.getElementById('nombreSeq').value = seq.getNombre() || '';
     const out = [];
     out.push("== Secuencia '" + seq.getNombre() + "' ==");
     out.push('Índice (en banco) : ' + seq.getIndice());
@@ -198,7 +265,76 @@ function refrescarTodo(){
     showInfo();
 }
 
-// eventos
+// - - - partituras de ejemplo (servidor) - - - - - - - - - - - - - - - - - - - - //
+async function cargarScores(){
+    try {
+        const res = await fetch('/api/scores');
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const sel = document.getElementById('scoresSel');
+        sel.innerHTML = '';
+        data.scores.forEach((nombre) => {
+            const opt = document.createElement('option');
+            opt.value = nombre;
+            opt.textContent = nombre;
+            sel.appendChild(opt);
+        });
+    } catch (e){
+        // sin servidor (file://): ocultamos el control
+        document.getElementById('scoresPanel').style.display = 'none';
+    }
+}
+
+async function cargarScoreSeleccionada(){
+    const nombre = document.getElementById('scoresSel').value;
+    if (!nombre) return;
+    try {
+        const res = await fetch('/api/scores/' + encodeURIComponent(nombre));
+        const data = await res.json();
+        document.getElementById('partitura').value = data.ams || '';
+    } catch (e){ /* servidor caído */ }
+}
+
+// - - - reproducción WebAudio - - - - - - - - - - - - - - - - - - - - - - - - - - //
+async function reproducir(){
+    const seq = comdasuar.editSeq();
+    if (!seq) return;
+    if (reproductor && reproductor.playing) await reproductor.stop();
+    const tipoOnda = document.getElementById('ondaSel').value;
+    const volumen = parseFloat(document.getElementById('volumen').value);
+    reproductor = new Reproductor(seq, {tipoOnda: tipoOnda, volumen: volumen});
+    await reproductor.play();
+}
+
+async function detener(){
+    if (reproductor) await reproductor.stop();
+}
+
+// - - - exportación MIDI - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
+function descargarZIP(){
+    const banco = comdasuar.editBanco();
+    if (!banco.getSize()){
+        document.getElementById('midiInfo').textContent = '(el banco está vacío)';
+        return;
+    }
+    const zip = MIDIexport.bancos2zip(banco);
+    MIDIexport.descargar(zip, 'comdasuar_bancos.zip');
+    const nombres = banco.secuencias.map((s, i) => MIDIexport.etiquetaSecuencia(banco, i) + '.mid').join(', ');
+    document.getElementById('midiInfo').textContent = banco.getSize() + ' secuencia(s) -> ' + zip.length + ' bytes (' + nombres + ')';
+}
+
+function descargarMIDI(){
+    const banco = comdasuar.editBanco();
+    if (!banco.getSize()){
+        document.getElementById('midiInfo').textContent = '(el banco está vacío)';
+        return;
+    }
+    const bytes = MIDIexport.bancos2mid(banco);
+    MIDIexport.descargar(bytes, 'comdasuar.mid');
+    document.getElementById('midiInfo').textContent = banco.getSize() + ' secuencia(s) -> ' + bytes.length + ' bytes (SMF formato 1, PPQ 480)';
+}
+
+// - - - eventos - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
 document.getElementById('chkDebug').addEventListener('change', (e) => {
     EmuladorComdasuar.setDebug(e.target.checked);
 });
@@ -235,6 +371,43 @@ document.getElementById('seqSel').addEventListener('change', (e) => {
 
 document.getElementById('transmuta_banco').addEventListener('change', refreshTransmutaOrigen);
 
+document.getElementById('btnCargarScore').addEventListener('click', cargarScoreSeleccionada);
+document.getElementById('btnPlay').addEventListener('click', reproducir);
+document.getElementById('btnStop').addEventListener('click', detener);
+document.getElementById('btnDescargarZIP').addEventListener('click', descargarZIP);
+document.getElementById('btnDescargarMIDI').addEventListener('click', descargarMIDI);
+
+document.getElementById('btnRenombrarBanco').addEventListener('click', () => {
+    comdasuar.editBanco().setNombre(document.getElementById('nombreBanco').value);
+    refrescarTodo();
+});
+
+document.getElementById('btnEliminarBanco').addEventListener('click', () => {
+    if (!confirm('¿Eliminar el banco actual con todas sus secuencias?')) return;
+    comdasuar.eliminarBanco();
+    refrescarTodo();
+});
+
+document.getElementById('btnRenombrarSeq').addEventListener('click', () => {
+    if (!comdasuar.editSeq()) return;
+    comdasuar.editSeq().setNombre(document.getElementById('nombreSeq').value);
+    refreshSecuencias();
+    showInfo();
+});
+
+document.getElementById('btnDuplicarSeq').addEventListener('click', () => {
+    if (!comdasuar.editSeq()) return;
+    comdasuar.duplicarSeq();
+    refrescarTodo();
+});
+
+document.getElementById('btnEliminarSeq').addEventListener('click', () => {
+    if (!comdasuar.editSeq()) return;
+    if (!confirm('¿Eliminar la secuencia seleccionada?')) return;
+    comdasuar.eliminarSeq();
+    refrescarTodo();
+});
+
 const val = (id) => parseFloat(document.getElementById(id).value);
 
 const handlers = {
@@ -265,6 +438,7 @@ document.querySelectorAll('button[data-h]').forEach((btn) => {
     });
 });
 
+cargarScores();
 refrescarTodo();
 </script>
 </body>

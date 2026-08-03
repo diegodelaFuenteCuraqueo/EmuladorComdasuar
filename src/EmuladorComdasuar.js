@@ -56,6 +56,25 @@ class EmuladorComdasuar{
         this.editSeq().print();
     }
 
+    /** Elimina la secuencia seleccionada del banco actual (reindexa las restantes).
+     * @returns {boolean} true si se eliminó. */
+    eliminarSeq(){
+        return this.editBanco().deleteSeq(this.editBanco().getSecuenciaActualIndex());
+    }
+
+    /** Duplica la secuencia seleccionada y agrega la copia al final del banco.
+     * @returns {SecuenciaAsuar|null} la copia creada. */
+    duplicarSeq(){
+        return this.editBanco().duplicarSeq(this.editBanco().getSecuenciaActualIndex());
+    }
+
+    /** Elimina el banco seleccionado (reindexa los restantes; si no queda ninguno,
+     *  crea uno vacío).
+     * @returns {boolean} true si se eliminó. */
+    eliminarBanco(){
+        return this.ADMIN.deleteBanco(this.ADMIN.getBancoActualIndex());
+    }
+
     //Heuristicos
     transportarSeq(st){
         Heuristicos.transportar( this.editSeq() , st);

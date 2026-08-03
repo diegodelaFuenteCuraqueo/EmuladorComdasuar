@@ -74,6 +74,32 @@ class BancoDeSecuencias{
         }
     }
 
+    /** Elimina la secuencia del índice indicado y reindexa las restantes.
+     *  @param {number} indice índice de la secuencia a eliminar.
+     *  @returns {boolean} true si se eliminó. */
+    deleteSeq(indice){
+        if (indice < 0 || indice >= this.secuencias.length) return false;
+        this.secuencias.splice(indice, 1);
+        this.secuencias.forEach((s, i) => s.setIndex(i));
+        if (this.seqActual >= this.secuencias.length){
+            this.seqActual = Math.max(0, this.secuencias.length - 1);
+        }
+        log(` Secuencia ${indice} eliminada (quedan ${this.secuencias.length})`);
+        return true;
+    }
+
+    /** Duplica la secuencia del índice indicado y la agrega al final del banco.
+     *  @param {number} indice índice de la secuencia a copiar.
+     *  @returns {SecuenciaAsuar|null} la copia creada, o null si el índice no existe. */
+    duplicarSeq(indice){
+        const original = this.secuencias[indice];
+        if (!original) return null;
+        const copia = original.clone();
+        copia.setNombre((original.getNombre() || "Seq") + "_copia");
+        this.addSeq(copia);
+        return copia;
+    }
+
     /** @param {string} nombreSeq Nombre de la secuencia a seleccionar. Si hay más de una secuencia con el mismo nombre seleccionará la primera. */
     selPorNombre(nombreSeq){
         for(let s of this.secuencias){

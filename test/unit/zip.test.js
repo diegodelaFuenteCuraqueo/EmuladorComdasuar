@@ -1,0 +1,101 @@
+const {test} = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {crc32, crearZip} = require('../../src/zip.js');
+const {MIDIexport} = require('../../src/MIDIexport.js');
+const Persistencia = require('../../src/Persistencia.js');
+const {BancoDeSecuencias} = require('../../src/BancoDeSecuencias.js');
+
+// ------- pequeño lector de ZIP solo para verificar la salida -------
+function leerU32(b, p){ return ((b[p] | b[p+1] << 8 | b[p+2] << 16 | b[p+3] << 24) >>> 0); }
+function leerU16(b, p){ return (b[p] | b[p+1] << 8); }
+
+function leerZIP(zip){
+    const b = Array.from(zip);
+    const entradas = [];
+    let pos = 0;
+    while (b[pos] === 0x50 && b[pos+1] === 0x4B && b[pos+2] === 0x03 && b[pos+3] === 0x04){
+        const nameLen = leerU16(b, pos + 26);
+        const extraLen = leerU16(b, pos + 28);
+        const crc = leerU32(b, pos + 14);
+        const compSize = leerU32(b, pos + 18);
+        const uncompSize = leerU32(b, pos + 22);
+        const nombre = String.fromCharCode(...b.slice(pos + 30, pos + 30 + nameLen));
+        const ini = pos + 30 + nameLen + extraLen;
+        entradas.push({nombre, crc, compSize, uncompSize, datos: b.slice(ini, ini + compSize)});
+        pos = ini + compSize;
+    }
+    // directorio central: debe empezar con PK\x01\x02
+    assert.deepStrictEqual(b.slice(pos, pos + 4), [0x50, 0x4B, 0x01, 0x02], 'directorio central presente');
+    // y terminar con el EOCD PK\x05\x06
+    const eocd = b.length - 22;
+    assert.deepStrictEqual(b.slice(eocd, eocd + 4), [0x50, 0x4B, 0x05, 0x06], 'EOCD presente');
+    assert.strictEqual(leerU16(b, eocd + 10), entradas.length, 'total de entradas en EOCD');
+    assert.strictEqual(leerU32(b, eocd + 16), pos, 'offset del directorio central');
+    assert.strictEqual(leerU32(b, eocd + 12), eocd - pos, 'tamaño del directorio central');
+    return entradas;
+}
+
+test('crc32 coincide con el vector de referencia y con zlib', () => {
+    const ref = new TextEncoder().encode('123456789');
+    assert.strictEqual(crc32(ref), 0xCBF43926);
+    assert.strictEqual(crc32(ref), require('node:zlib').crc32(Buffer.from(ref)));
+});
+
+test('crearZip produce un ZIP con la estructura correcta', () => {
+    const a = new TextEncoder().encode('hola mundo');
+    const b = new TextEncoder().encode('x'.repeat(1000));
+    const zip = crearZip([{nombre: 'a.txt', bytes: a}, {nombre: 'b.bin', bytes: b}]);
+
+    assert.deepStrictEqual(Array.from(zip.slice(0, 4)), [0x50, 0x4B, 0x03, 0x04]);
+    const entradas = leerZIP(zip);
+    assert.strictEqual(entradas.length, 2);
+    assert.strictEqual(entradas[0].nombre, 'a.txt');
+    assert.strictEqual(entradas[0].compSize, a.length);
+    assert.strictEqual(entradas[0].uncompSize, a.length);
+    assert.deepStrictEqual(entradas[0].datos, Array.from(a));
+    assert.strictEqual(entradas[1].nombre, 'b.bin');
+    assert.deepStrictEqual(entradas[1].datos, Array.from(b));
+});
+
+test('crearZip soporta Uint8Array y Array como entrada', () => {
+    const zip = crearZip([{nombre: 'n.txt', bytes: [1, 2, 3]}]);
+    const [ent] = leerZIP(zip);
+    assert.deepStrictEqual(ent.datos, [1, 2, 3]);
+    assert.strictEqual(ent.crc, crc32(new Uint8Array([1, 2, 3])));
+});
+
+test('bancos2zip genera un .mid por secuencia con etiqueta banco_secuencia', () => {
+    const banco = new BancoDeSecuencias('Test');
+    banco.addSeqAMS('j1 n 4c 4d 4e');
+    banco.addSeqAMS('j1 n 4f 4g 4a');
+    banco.setIndice(2);
+
+    const zip = MIDIexport.bancos2zip(banco);
+    const entradas = leerZIP(zip);
+    assert.deepStrictEqual(entradas.map(e => e.nombre), ['2_0.mid', '2_1.mid']);
+    for (const ent of entradas){
+        assert.deepStrictEqual(ent.datos.slice(0, 4), [0x4D, 0x54, 0x68, 0x64], 'cada entrada es un SMF');
+    }
+});
+
+test('etiquetaSecuencia usa indices banco/seq', () => {
+    const banco = new BancoDeSecuencias('x');
+    banco.setIndice(5);
+    assert.strictEqual(MIDIexport.etiquetaSecuencia(banco, 3), '5_3');
+    assert.strictEqual(MIDIexport.etiquetaSecuencia(null, 0), '0_0');
+    assert.strictEqual(MIDIexport.etiquetaSecuencia([1, 2], 1), '0_1');
+});
+
+test('Persistencia.guardarZIP escribe y lee un ZIP real', () => {
+    const banco = new BancoDeSecuencias('Test');
+    banco.addSeqAMS('j1 n 4c 4d 4e');
+    const zip = MIDIexport.bancos2zip(banco);
+    const ruta = path.join(os.tmpdir(), 'comdasuar_test_' + Date.now() + '.zip');
+    Persistencia.guardarZIP(zip, ruta);
+    const deDisco = fs.readFileSync(ruta);
+    assert.deepStrictEqual(Array.from(deDisco), Array.from(zip));
+    fs.unlinkSync(ruta);
+});

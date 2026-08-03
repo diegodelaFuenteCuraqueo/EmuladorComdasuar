@@ -499,6 +499,15 @@ class SecuenciaAsuar{
         this.aplicarTempo();
         this.computarInicios();
     }
+
+    /** Crea una copia profunda e independiente de la secuencia (mismas notas,
+     *  tempos y duraciones; no comparte objetos con el original). */
+    clone(){
+        const copia = new SecuenciaAsuar(this.nombre);
+        copia.cargarSecuencia(JSON.parse(JSON.stringify(this)));
+        copia.seqIndex = -1;
+        return copia;
+    }
     // SETTERS - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
     /** @param {String} n nuevo nombre para la secuencia actual                    */
     setNombre(n){       this.nombre = n;}
@@ -1052,8 +1061,8 @@ class Heuristicos{
         log("    Alturas iniciales (A)       : "+ midicentsA.join(" ")+` (${midicentsA.length}) ` );
         log("    Alturas aplicadas (B)       : "+ midicentsB.join(" ")+` (${midicentsB.length}) ` );
 
-        let largoA = midicentsA.length + 1;
-        let largoB = midicentsB.length + 1;
+        let largoA = midicentsA.length;
+        let largoB = midicentsB.length;
 
         let contB = 0;
         for(let i = 0; i < largoA ; i++){
@@ -1061,7 +1070,7 @@ class Heuristicos{
             if(midicentsA[i] == 0){
                 continue;
             }else{
-                let alturaTransmutada = midicentsB[contB%largoB] ;
+                let alturaTransmutada = midicentsB.length > 0 ? midicentsB[contB%largoB] : midicentsA[i];
                 midicentsA[i] = alturaTransmutada;
                 contB++;
             }
@@ -1083,11 +1092,11 @@ class Heuristicos{
         log("    Duraciones iniciales (A)      : "+ milisegundosA.join(" ")+` (${milisegundosA.length}) ` );
         log("    Duraciones aplicadas (B)      : "+ milisegundosB.join(" ")+` (${milisegundosB.length}) `  );
 
-        let largoA = milisegundosA.length + 1;
-        let largoB = milisegundosB.length + 1;
+        let largoA = milisegundosA.length;
+        let largoB = milisegundosB.length;
 
         for(let i = 0; i < largoA; i++){
-            milisegundosA[i] = milisegundosB[i%largoB] ;
+            milisegundosA[i] = milisegundosB.length > 0 ? milisegundosB[i%largoB] : milisegundosA[i];
         }
         log("    Duraciones transmutadas (B->A): "+ milisegundosA.join(" ")+"\n [H] \n");
         AsuarSeqA.setDuraciones(milisegundosA);
@@ -1179,6 +1188,32 @@ class BancoDeSecuencias{
         }else{
             console.error("ERROR : indice incorrecto para la secuencia. "+n+" ( "+typeof n+" )");
         }
+    }
+
+    /** Elimina la secuencia del índice indicado y reindexa las restantes.
+     *  @param {number} indice índice de la secuencia a eliminar.
+     *  @returns {boolean} true si se eliminó. */
+    deleteSeq(indice){
+        if (indice < 0 || indice >= this.secuencias.length) return false;
+        this.secuencias.splice(indice, 1);
+        this.secuencias.forEach((s, i) => s.setIndex(i));
+        if (this.seqActual >= this.secuencias.length){
+            this.seqActual = Math.max(0, this.secuencias.length - 1);
+        }
+        log(` Secuencia ${indice} eliminada (quedan ${this.secuencias.length})`);
+        return true;
+    }
+
+    /** Duplica la secuencia del índice indicado y la agrega al final del banco.
+     *  @param {number} indice índice de la secuencia a copiar.
+     *  @returns {SecuenciaAsuar|null} la copia creada, o null si el índice no existe. */
+    duplicarSeq(indice){
+        const original = this.secuencias[indice];
+        if (!original) return null;
+        const copia = original.clone();
+        copia.setNombre((original.getNombre() || "Seq") + "_copia");
+        this.addSeq(copia);
+        return copia;
     }
 
     /** @param {string} nombreSeq Nombre de la secuencia a seleccionar. Si hay más de una secuencia con el mismo nombre seleccionará la primera. */
@@ -1310,6 +1345,26 @@ class AdministradorDeBancos{
         this.selBanco( this.bancos.length-1 );
         this.bancos[this.bancoActual].setIndice(this.bancoActual);
         log("Nuevo BancoDeSecuencias creado : id "+this.bancoActual+" (seleccionado)");
+    }
+
+    /** Elimina el banco del índice indicado y reindexa los restantes.
+     *  Si no queda ningún banco, se crea automáticamente uno vacío para que
+     *  editBanco()/selBanco() sigan funcionando.
+     *  @param {number} indice índice del banco a eliminar.
+     *  @returns {boolean} true si se eliminó. */
+    deleteBanco(indice){
+        if (indice < 0 || indice >= this.bancos.length) return false;
+        this.bancos.splice(indice, 1);
+        this.bancos.forEach((b, i) => b.setIndice(i));
+        if (this.bancos.length === 0){
+            this.bancos.push(new BancoDeSecuencias());
+            this.bancos[0].setIndice(0);
+        }
+        if (this.bancoActual >= this.bancos.length){
+            this.bancoActual = this.bancos.length - 1;
+        }
+        log(` Banco ${indice} eliminado (quedan ${this.bancos.length})`);
+        return true;
     }
 
     getBancoActualIndex(){
@@ -1478,6 +1533,25 @@ class EmuladorComdasuar{
         this.editSeq().print();
     }
 
+    /** Elimina la secuencia seleccionada del banco actual (reindexa las restantes).
+     * @returns {boolean} true si se eliminó. */
+    eliminarSeq(){
+        return this.editBanco().deleteSeq(this.editBanco().getSecuenciaActualIndex());
+    }
+
+    /** Duplica la secuencia seleccionada y agrega la copia al final del banco.
+     * @returns {SecuenciaAsuar|null} la copia creada. */
+    duplicarSeq(){
+        return this.editBanco().duplicarSeq(this.editBanco().getSecuenciaActualIndex());
+    }
+
+    /** Elimina el banco seleccionado (reindexa los restantes; si no queda ninguno,
+     *  crea uno vacío).
+     * @returns {boolean} true si se eliminó. */
+    eliminarBanco(){
+        return this.ADMIN.deleteBanco(this.ADMIN.getBancoActualIndex());
+    }
+
     //Heuristicos
     transportarSeq(st){
         Heuristicos.transportar( this.editSeq() , st);
@@ -1537,11 +1611,502 @@ exports.EmuladorComdasuar = EmuladorComdasuar
 
 };
 
+__modules['./Reproductor.js'] = function(module, exports, __require){
+var require = __require;
+/*================================================================================+
+| EMULADOR COMDASUAR (2018-2021)                                                  |
+|· · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ·|
+| Desarrollado por Diego de la Fuente Curaqueo                                    |
+| como parte del proyecto de recodificación del COMDASUAR original                |
+| creado por José Vicente Asuar durante los años 70'.                             |
++=================================================================================*/
+
+/** Reproductor WebAudio (solo navegador).
+ *  Programa osciladores a partir de las notas de una SecuenciaAsuar usando sus
+ *  inicios (ms), duraciones (ms) y midicents. Los silencios (midicent <= 0)
+ *  se omiten, generando pausas naturales en la línea de tiempo.
+ *  En Node este módulo es inofensivo: solo hace algo al llamar play() en un
+ *  contexto con AudioContext disponible. */
+class Reproductor {
+
+    /** @param {import('./SecuenciaAsuar.js').SecuenciaAsuar} secuencia Secuencia a reproducir.
+     *  @param {Object} [opciones] { volumen: 0..1, tipoOnda: 'sine'|'square'|'triangle'|'sawtooth' } */
+    constructor(secuencia, opciones){
+        this.seq = secuencia;
+        this.opciones = Object.assign({ volumen: 0.25, tipoOnda: "sine" }, opciones || {});
+        this.ctx = null;
+        this.nodos = [];
+        this.playing = false;
+    }
+
+    /** Obtiene (creándolo perezosamente) el AudioContext del navegador. */
+    get contexto(){
+        if (typeof window === "undefined") return null;
+        const Ctor = window.AudioContext || window.webkitAudioContext;
+        if (!Ctor) return null;
+        if (!this.ctx) this.ctx = new Ctor();
+        return this.ctx;
+    }
+
+    /** Programa la secuencia completa y comienza la reproducción. */
+    async play(){
+        const ctx = this.contexto;
+        if (!ctx){
+            console.error("[Reproductor] WebAudio no disponible en este entorno.");
+            return;
+        }
+        if (ctx.state === "suspended") await ctx.resume();
+
+        const t0 = ctx.currentTime + 0.08;
+        const notas = this.seq.getNotas();
+
+        for (const nota of notas){
+            const mc = nota.getMidicent();
+            if (mc <= 0) continue; // silencio
+            const freq = Reproductor.midicent2hz(mc);
+            const inicio = t0 + nota.getInicio() / 1000;
+            const duracion = Math.max(0.06, nota.getMS() / 1000);
+            this.programarNota(ctx, freq, inicio, duracion);
+        }
+
+        this.playing = true;
+        this.fin = t0 + this.seq.getDuracionTotal() / 1000;
+    }
+
+    /** Programa un único tono con envolvente suave. */
+    programarNota(ctx, freq, inicio, duracion){
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = this.opciones.tipoOnda;
+        osc.frequency.setValueAtTime(freq, inicio);
+
+        const ataque = 0.01;
+        const suelta = 0.04;
+        gain.gain.setValueAtTime(0, inicio);
+        gain.gain.linearRampToValueAtTime(this.opciones.volumen, inicio + ataque);
+        gain.gain.setValueAtTime(this.opciones.volumen, Math.max(inicio + ataque, inicio + duracion - suelta));
+        gain.gain.linearRampToValueAtTime(0, inicio + duracion);
+
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(inicio);
+        osc.stop(inicio + duracion + 0.05);
+        this.nodos.push(osc);
+    }
+
+    /** Detiene la reproducción y cierra el AudioContext. */
+    async stop(){
+        const ctx = this.contexto;
+        this.playing = false;
+        if (!ctx) return;
+        for (const osc of this.nodos){
+            try { osc.stop(); } catch (e) { /* ya detenido */ }
+        }
+        this.nodos = [];
+        await ctx.close();
+        this.ctx = null;
+    }
+
+    /** Convierte un midicent a frecuencia en Hz (A4 = 440 Hz = 6900 mc). */
+    static midicent2hz(mc){
+        const midi = mc / 100;
+        return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+}
+
+exports.Reproductor = Reproductor;
+
+};
+
+__modules['./zip.js'] = function(module, exports, __require){
+var require = __require;
+/*================================================================================+
+| EMULADOR COMDASUAR (2018-2021)                                                  |
+|· · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ·|
+| Desarrollado por Diego de la Fuente Curaqueo                                    |
+| como parte del proyecto de recodificación del COMDASUAR original                |
+| creado por José Vicente Asuar durante los años 70'.                             |
++=================================================================================*/
+
+/* Creador de archivos ZIP mínimo, sin dependencias y sin compresión.
+ * Funciona tanto en el navegador (<script>) como en Node (require), ya que solo
+ * manipula Uint8Array. Cada entrada se almacena con método 0 (sin comprimir),
+ * lo que es suficiente para los archivos pequeños (MIDI, JSON) y evita depender
+ * de una implementación de DEFLATE en el navegador.
+ *
+ * Formato (APPNOTE 6.3.4): cabecera local + datos por entrada, seguidos de un
+ * directorio central y del registro de fin de directorio central (EOCD).
+ */
+
+/** Tabla CRC-32 (polinomio reflejado 0xEDB88320). Se calcula una sola vez. */
+const CRC_TABLA = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++){
+        let c = n;
+        for (let k = 0; k < 8; k++){
+            c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        }
+        t[n] = c >>> 0;
+    }
+    return t;
+})();
+
+/** CRC-32 de una secuencia de bytes.
+ *  @param {Uint8Array} bytes
+ *  @returns {number} CRC-32 (entero sin signo). */
+function crc32(bytes){
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++){
+        crc = CRC_TABLA[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+/** Hora/fecha DOS a partir de la fecha actual (para las cabeceras ZIP). */
+function fechaDOS(){
+    const d = new Date();
+    const hora = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF;
+    const fecha = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+    return {hora, fecha};
+}
+
+/** Añade un entero little-endian de 2 o 4 bytes a un arreglo de bytes. */
+function pushU16(bytes, v){
+    bytes.push(v & 0xFF, (v >>> 8) & 0xFF);
+}
+function pushU32(bytes, v){
+    bytes.push(
+        v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF
+    );
+}
+
+/** Bytes UTF-8 de un nombre de entrada (nombres ASCII normalmente).
+ *  Usa TextEncoder si está disponible; si no, codifica UTF-8 a mano. */
+function nombreBytes(nombre){
+    const s = String(nombre);
+    if (typeof TextEncoder !== "undefined"){
+        return new TextEncoder().encode(s);
+    }
+    const bytes = [];
+    for (let i = 0; i < s.length; i++){
+        const c = s.codePointAt(i);
+        if (c < 0x80) bytes.push(c);
+        else if (c < 0x800) bytes.push(0xC0 | (c >> 6), 0x80 | (c & 0x3F));
+        else if (c < 0x10000) bytes.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 0x3F), 0x80 | (c & 0x3F));
+        else bytes.push(0xF0 | (c >> 18), 0x80 | ((c >> 12) & 0x3F), 0x80 | ((c >> 6) & 0x3F), 0x80 | (c & 0x3F));
+    }
+    return new Uint8Array(bytes);
+}
+
+/**
+ * Crea un archivo ZIP (sin comprimir) a partir de una lista de entradas.
+ * @param {Array<{nombre: string, bytes: Uint8Array|Array<number>}>} entradas
+ * @returns {Uint8Array} Archivo ZIP completo. */
+function crearZip(entradas){
+    const {hora, fecha} = fechaDOS();
+    const archivo = [];
+    const central = [];
+
+    for (const entrada of entradas){
+        const nombre = nombreBytes(entrada.nombre);
+        const datos = entrada.bytes instanceof Uint8Array
+            ? entrada.bytes
+            : new Uint8Array(entrada.bytes);
+        const checksum = crc32(datos);
+
+        // Cabecera local
+        const localPos = archivo.length;
+        archivo.push(0x50, 0x4B, 0x03, 0x04);            // firma PK\x03\x04
+        pushU16(archivo, 20);                            // versión necesaria
+        pushU16(archivo, 0);                             // flags
+        pushU16(archivo, 0);                             // método: 0 = sin comprimir
+        pushU16(archivo, hora);
+        pushU16(archivo, fecha);
+        pushU32(archivo, checksum);
+        pushU32(archivo, datos.length);                  // tamaño comprimido
+        pushU32(archivo, datos.length);                  // tamaño original
+        pushU16(archivo, nombre.length);
+        pushU16(archivo, 0);                             // longitud extra
+        for (let i = 0; i < nombre.length; i++) archivo.push(nombre[i]);
+        for (let i = 0; i < datos.length; i++) archivo.push(datos[i]);
+
+        // Directorio central
+        central.push(0x50, 0x4B, 0x01, 0x02);            // firma PK\x01\x02
+        pushU16(central, 20);                            // versión creado por (DOS)
+        pushU16(central, 20);                            // versión necesaria
+        pushU16(central, 0);                             // flags
+        pushU16(central, 0);                             // método
+        pushU16(central, hora);
+        pushU16(central, fecha);
+        pushU32(central, checksum);
+        pushU32(central, datos.length);
+        pushU32(central, datos.length);
+        pushU16(central, nombre.length);
+        pushU16(central, 0);                             // longitud extra
+        pushU16(central, 0);                             // comentario
+        pushU16(central, 0);                             // disco inicial
+        pushU16(central, 0);                             // atributos internos
+        pushU32(central, 0);                             // atributos externos
+        pushU32(central, localPos);                      // offset cabecera local
+        for (let i = 0; i < nombre.length; i++) central.push(nombre[i]);
+    }
+
+    const cdOffset = archivo.length;
+
+    // Fin de directorio central (EOCD): va siempre al final del archivo.
+    const eocd = [];
+    eocd.push(0x50, 0x4B, 0x05, 0x06);                 // firma PK\x05\x06
+    pushU16(eocd, 0);                                  // nº de disco
+    pushU16(eocd, 0);                                  // disco con el directorio
+    pushU16(eocd, entradas.length);                    // entradas en este disco
+    pushU16(eocd, entradas.length);                    // total de entradas
+    pushU32(eocd, central.length);                     // tamaño del directorio central
+    pushU32(eocd, cdOffset);                           // offset del directorio central
+    pushU16(eocd, 0);                                  // longitud del comentario
+
+    return new Uint8Array([...archivo, ...central, ...eocd]);
+}
+
+exports.crearZip = crearZip;
+exports.crc32 = crc32;
+
+};
+
+__modules['./MIDIexport.js'] = function(module, exports, __require){
+var require = __require;
+/*================================================================================+
+| EMULADOR COMDASUAR (2018-2021)                                                  |
+|· · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ·|
+| Desarrollado por Diego de la Fuente Curaqueo                                    |
+| como parte del proyecto de recodificación del COMDASUAR original                |
+| creado por José Vicente Asuar durante los años 70'.                             |
++=================================================================================*/
+
+const {getDiccionarioAsuar} = require('./diccionarioAsuar.js');
+const {crearZip} = require('./zip.js');
+
+/** Resolución de pulsos por negra (clásica para SMF). */
+const PPQ = 480;
+
+/**
+ * MIDIexport
+ * Convierte un banco de SecuenciaAsuar a un archivo MIDI (Standard MIDI File).
+ * Formato 1: la pista 0 es la pista "conductor" (tempo y compás), y cada
+ * SecuenciaAsuar del banco ocupa una pista propia.
+ * Convenciones:
+ *  - v1 asume un tempo único compartido (el de la primera secuencia del banco).
+ *  - Los silencios (midicent <= 0) generan pausas: no se emiten notas, solo
+ *    avanza el reloj.
+ *  - Los midicents con cuartos de tono se redondean al semitono MIDI más próximo.
+ *  - Cada nota se emite como NoteOn (0x90) + NoteOff (0x80); no se usa running status.
+ *  - La salida es un Uint8Array listo para guardarse como .mid (ver guardar/descargar).
+ */
+class MIDIexport {
+
+    static get PPQ(){ return PPQ; }
+
+    /** Convierte un banco completo a bytes MIDI.
+     *  @param {import('./BancoDeSecuencias.js').BancoDeSecuencias|Array} banco Banco con .secuencias o array de SecuenciaAsuar.
+     *  @returns {Uint8Array} Archivo SMF formato 1. */
+    static bancos2mid(banco){
+        const secuencias = Array.isArray(banco) ? banco : (banco && banco.secuencias) || [];
+        if (secuencias.length === 0){
+            throw new Error("MIDIexport: el banco no contiene secuencias.");
+        }
+
+        const quarterMs = MIDIexport.quarterMs(secuencias[0].getTempo());
+        const uspq = Math.round(quarterMs * 1000); // microsegundos por negra
+
+        const tracks = [MIDIexport.construirConductor(uspq)];
+        for (const seq of secuencias){
+            tracks.push(MIDIexport.construirTrack(seq, quarterMs));
+        }
+        return MIDIexport.construirArchivo(tracks);
+    }
+
+    /** Convierte una única secuencia a bytes MIDI (banco de una pista). */
+    static secuencia2mid(seq){
+        return MIDIexport.bancos2mid([seq]);
+    }
+
+    /** Etiqueta `banco_secuencia` para una secuencia dentro de un banco.
+     *  Se usa como nombre de archivo en el ZIP exportado. */
+    static etiquetaSecuencia(banco, i){
+        const bancoIdx = (banco && typeof banco.getIndice === "function" && banco.getIndice() >= 0)
+            ? banco.getIndice()
+            : 0;
+        return bancoIdx + "_" + i;
+    }
+
+    /** Convierte un banco completo a un ZIP con un archivo .mid por secuencia.
+     *  Cada entrada se llama `{banco}_{secuencia}.mid` (p. ej. `0_0.mid`).
+     *  @param {import('./BancoDeSecuencias.js').BancoDeSecuencias|Array} banco Banco con .secuencias o array de SecuenciaAsuar.
+     *  @returns {Uint8Array} Archivo ZIP (entradas sin comprimir). */
+    static bancos2zip(banco){
+        const secuencias = Array.isArray(banco) ? banco : (banco && banco.secuencias) || [];
+        if (secuencias.length === 0){
+            throw new Error("MIDIexport: el banco no contiene secuencias.");
+        }
+
+        const entradas = secuencias.map((seq, i) => ({
+            nombre: MIDIexport.etiquetaSecuencia(banco, i) + ".mid",
+            bytes: MIDIexport.secuencia2mid(seq)
+        }));
+        return crearZip(entradas);
+    }
+
+    /** Milisegundos por negra según el tempo {figura, pulsosPorMin, duracionPulso}.
+     *  quarterMs = duracionPulso * 1000 / ritmos[figura]  (la negra N vale 1000 por convención). */
+    static quarterMs(tempo){
+        const dict = getDiccionarioAsuar();
+        const ritmoFigura = dict.ritmos[tempo.figura] || dict.ritmos.N;
+        return (1000 * tempo.duracionPulso) / ritmoFigura;
+    }
+
+    /** Construye la pista 0 (conductor): tempo + compás 4/4 + fin. */
+    static construirConductor(uspq){
+        const bytes = [];
+        let lastTick = 0;
+
+        const emitirMeta = (tick, tipo, datos) => {
+            const delta = Math.max(0, Math.round(tick) - lastTick);
+            appendVLQ(bytes, delta);
+            bytes.push(0xFF, tipo, datos.length, ...datos);
+            lastTick = Math.round(tick);
+        };
+
+        // Tempo (FF 51 03)
+        emitirMeta(0, 0x51, [(uspq >> 16) & 0xFF, (uspq >> 8) & 0xFF, uspq & 0xFF]);
+        // Compás 4/4 (FF 58 04)
+        emitirMeta(0, 0x58, [0x04, 0x02, 0x18, 0x08]);
+        // Fin de pista (FF 2F 00)
+        emitirMeta(0, 0x2F, [0x00]);
+
+        return bytes;
+    }
+
+    /** Construye la pista de una secuencia: nombre + notas + fin. */
+    static construirTrack(seq, quarterMs){
+        const bytes = [];
+        let lastTick = 0;
+
+        const emitir = (tick, status, d1, d2) => {
+            const delta = Math.max(0, Math.round(tick) - lastTick);
+            appendVLQ(bytes, delta);
+            bytes.push(status, d1, d2);
+            lastTick = Math.round(tick);
+        };
+        const emitirMeta = (tick, tipo, datos) => {
+            const delta = Math.max(0, Math.round(tick) - lastTick);
+            appendVLQ(bytes, delta);
+            bytes.push(0xFF, tipo, datos.length, ...datos);
+            lastTick = Math.round(tick);
+        };
+
+        emitirMeta(0, 0x03, asciiBytes((seq.getNombre() || "Track").trim()));
+
+        for (const nota of seq.getNotas()){
+            const mc = nota.getMidicent();
+            if (mc <= 0) continue; // silencio
+            const midi = Math.round(mc / 100);
+            if (midi <= 0 || midi > 127) continue;
+
+            const on = (nota.getInicio() / quarterMs) * PPQ;
+            const off = ((nota.getInicio() + nota.getMS()) / quarterMs) * PPQ;
+
+            emitir(on, 0x90, midi, 0x50);
+            emitir(off, 0x80, midi, 0x00);
+        }
+
+        emitirMeta(0, 0x2F, [0x00]);
+        return bytes;
+    }
+
+    /** Ensambla la cabecera MThd y los chunks MTrk. */
+    static construirArchivo(tracks){
+        const bytes = [];
+
+        // Cabecera: MThd, longitud 6, formato 1, ntrks, división (PPQ)
+        bytes.push(0x4D, 0x54, 0x68, 0x64);
+        bytes.push(0x00, 0x00, 0x00, 0x06);
+        bytes.push(0x00, 0x01);
+        bytes.push((tracks.length >> 8) & 0xFF, tracks.length & 0xFF);
+        bytes.push((PPQ >> 8) & 0xFF, PPQ & 0xFF);
+
+        for (const track of tracks){
+            bytes.push(0x4D, 0x54, 0x72, 0x6B);
+            bytes.push(
+                (track.length >> 24) & 0xFF,
+                (track.length >> 16) & 0xFF,
+                (track.length >> 8) & 0xFF,
+                track.length & 0xFF
+            );
+            bytes.push(...track);
+        }
+
+        return new Uint8Array(bytes);
+    }
+
+    /** Dispara la descarga del archivo en el navegador. No-op en Node.
+     *  El tipo MIME se deduce de la extensión del archivo (.mid → audio/midi,
+     *  .zip → application/zip). */
+    static descargar(bytes, nombre){
+        if (typeof window === "undefined"){
+            console.warn("[MIDIexport] descargar() solo funciona en el navegador.");
+            return;
+        }
+        nombre = nombre || "archivo.bin";
+        const ext = (nombre.split('.').pop() || '').toLowerCase();
+        const tipos = {
+            mid: "audio/midi",
+            midi: "audio/midi",
+            zip: "application/zip",
+            json: "application/json",
+            txt: "text/plain"
+        };
+        const blob = new Blob([bytes], { type: tipos[ext] || "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = nombre;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+}
+
+/** Anexa un delta-tiempo en formato variable-length quantity (SMF). */
+function appendVLQ(bytes, value){
+    value = Math.max(0, Math.round(value));
+    const tmp = [];
+    tmp.push(value & 0x7F);
+    while ((value >>= 7) > 0){
+        tmp.push((value & 0x7F) | 0x80);
+    }
+    for (let i = tmp.length - 1; i >= 0; i--) bytes.push(tmp[i]);
+}
+
+/** Convierte texto a bytes ASCII (para metaeventos de texto MIDI). */
+function asciiBytes(texto){
+    const out = [];
+    for (let i = 0; i < texto.length; i++) out.push(texto.charCodeAt(i) & 0x7F);
+    return out;
+}
+
+exports.MIDIexport = MIDIexport;
+
+};
+
 
 window.EmuladorComdasuar = __require('./EmuladorComdasuar.js').EmuladorComdasuar;
 window.AMSparser = __require('./AMSparser.js').AMSparser;
 window.BancoDeSecuencias = __require('./BancoDeSecuencias.js').BancoDeSecuencias;
 window.SecuenciaAsuar = __require('./SecuenciaAsuar.js').SecuenciaAsuar;
 window.NotaAsuar = __require('./NotaAsuar.js').NotaAsuar;
+window.Reproductor = __require('./Reproductor.js').Reproductor;
+window.MIDIexport = __require('./MIDIexport.js').MIDIexport;
+window.crearZip = __require('./zip.js').crearZip;
+window.crc32 = __require('./zip.js').crc32;
 window.DiccionarioAsuar = __require('./diccionarioAsuar.js').DiccionarioAsuar;
 })();

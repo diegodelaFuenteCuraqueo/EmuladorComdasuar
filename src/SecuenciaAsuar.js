@@ -120,6 +120,15 @@ class SecuenciaAsuar{
         this.aplicarTempo();
         this.computarInicios();
     }
+
+    /** Crea una copia profunda e independiente de la secuencia (mismas notas,
+     *  tempos y duraciones; no comparte objetos con el original). */
+    clone(){
+        const copia = new SecuenciaAsuar(this.nombre);
+        copia.cargarSecuencia(JSON.parse(JSON.stringify(this)));
+        copia.seqIndex = -1;
+        return copia;
+    }
     // SETTERS - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
     /** @param {String} n nuevo nombre para la secuencia actual                    */
     setNombre(n){       this.nombre = n;}

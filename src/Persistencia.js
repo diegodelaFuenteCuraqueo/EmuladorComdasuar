@@ -36,6 +36,32 @@ class Persistencia {
             console.error(err);
         }
     }
+
+    /** Guarda un archivo MIDI en disco (resultado de MIDIexport.bancos2mid).
+     *  @param {Uint8Array|Array<number>} bytes Bytes del archivo SMF.
+     *  @param {string} ruta Ruta del archivo .mid de salida. */
+    static guardarMIDI(bytes, ruta){
+        Persistencia.guardarArchivo(bytes, ruta);
+    }
+
+    /** Guarda un archivo ZIP en disco (resultado de MIDIexport.bancos2zip).
+     *  @param {Uint8Array|Array<number>} bytes Bytes del archivo ZIP.
+     *  @param {string} ruta Ruta del archivo .zip de salida. */
+    static guardarZIP(bytes, ruta){
+        Persistencia.guardarArchivo(bytes, ruta);
+    }
+
+    /** Guarda cualquier arreglo de bytes en disco.
+     *  @param {Uint8Array|Array<number>} bytes
+     *  @param {string} ruta Ruta del archivo de salida. */
+    static guardarArchivo(bytes, ruta){
+        const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        try {
+            fs.writeFileSync(ruta, data);
+        } catch (err) {
+            console.error(err);
+        }
+    }
 }
 
 module.exports = Persistencia;
