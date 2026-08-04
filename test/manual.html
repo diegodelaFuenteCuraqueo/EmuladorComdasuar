@@ -55,11 +55,23 @@
   .editor textarea { width:100%; resize:none; background:transparent;
     color:transparent; caret-color:var(--texto); -webkit-text-fill-color:transparent; }
   .ams-modo     { color:#c8a2e8; }
+  .ams-tempo    { color:#f9e2af; }
+  .ams-compas   { color:#f9e2af; }
   .ams-altura   { color:#a6e3a1; }
   .ams-duracion { color:#89b4fa; }
   .ams-repetir  { color:#cdd6f4; }
   .ams-error    { color:#f38ba8; text-decoration:underline wavy #f38ba8; }
   #editorError  { display:none; color:#f38ba8; font-size:12px; margin-top:6px; white-space:pre-wrap; }
+
+  /* - - - paleta de grupos (grid) - - - */
+  .grid-grupos { border-collapse:collapse; margin-top:8px; }
+  .grid-grupos th, .grid-grupos td { border:1px solid #3b4261; padding:6px 10px; text-align:center; font-size:13px; }
+  .grid-grupos th { background:#24273a; color:#cdd6f4; font-weight:600; }
+  .grid-grupos td.grupo-activo { background:#89b4fa22; outline:2px solid #89b4fa; }
+  .grid-grupos td.seq-activo  { background:#a6e3a122; outline:2px solid #a6e3a1; }
+  .grid-grupos .celda { cursor:pointer; }
+  .grid-grupos .celda:hover { background:#313552; }
+  .grid-grupos .vacio { color:#6c7086; font-style:italic; }
 
   @media (max-width:640px){
     body { padding:10px; }
@@ -74,10 +86,11 @@
 <body>
 
 <h1>Emulador COMDASUAR — Test manual</h1>
-<p class="sub">Parser AMS, secuencias, bancos, heurísticos, reproducción WebAudio, exportación MIDI
-y partitura VexFlow (pentagrama de piano, un compás por secuencia).
+<p class="sub">Parser AMS, secuencias, bancos como paleta de grupos × secuencias, heurísticos,
+reproducción WebAudio, exportación MIDI (ZIP con un .mid por secuencia, etiquetados
+<code>&lt;secuencia&gt; - &lt;grupo&gt;.mid</code>) y partitura VexFlow (pentagrama de piano, un compás por secuencia).
 Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://</code> el bundle <code>comdasuar.js</code> debe estar junto a este archivo y no se muestran las partituras de ejemplo.
-La partitura VexFlow se carga desde CDN y requiere conexión a internet.</p>
+La partitura VexFlow se carga desde CDN bajo demanda y requiere conexión a internet.</p>
 
 <div class="fila">
   <label><input type="checkbox" id="chkDebug"> Logs de depuración</label>
@@ -110,9 +123,24 @@ La partitura VexFlow se carga desde CDN y requiere conexión a internet.</p>
   <div class="fila">
     <label>Banco:</label>
     <select id="bancoSel"></select>
+    <label>Grupo:</label>
+    <select id="grupoSel"></select>
     <label>Secuencia:</label>
     <select id="seqSel"></select>
   </div>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">2.5. Paleta de grupos (columnas × secuencias)</h2>
+  <p class="sub">El banco es una paleta: cada <b>grupo</b> es una columna y las secuencias
+  se reparten en filas. Los grupos son organizacionales (no pistas). Haga clic en una
+  celda para seleccionar esa secuencia.</p>
+  <div class="fila">
+    <button id="btnNuevoGrupo">Nuevo grupo</button>
+    <button id="btnRenombrarGrupo">Renombrar grupo seleccionado…</button>
+    <button id="btnEliminarGrupo">Eliminar grupo seleccionado</button>
+  </div>
+  <div class="tabla-scroll"><table id="gridGrupos" class="grid-grupos"></table></div>
 </div>
 
 <div class="panel">
@@ -138,10 +166,13 @@ La partitura VexFlow se carga desde CDN y requiere conexión a internet.</p>
     <input type="text" id="nombreBanco" size="24">
     <button id="btnRenombrarBanco">Renombrar banco</button>
     <button id="btnEliminarBanco">Eliminar banco</button>
+   </div> 
+    <div class="fila">
     <label>Secuencia:</label>
     <input type="text" id="nombreSeq" size="24">
     <button id="btnRenombrarSeq">Renombrar</button>
     <button id="btnDuplicarSeq">Duplicar</button>
+    <button id="btnRestaurarSeq">Restaurar original</button>
     <button id="btnEliminarSeq">Eliminar</button>
   </div>
   <pre id="info">(sin secuencia)</pre>
@@ -193,14 +224,21 @@ La partitura VexFlow se carga desde CDN y requiere conexión a internet.</p>
 </div>
 
 <div class="panel">
-  <h2 style="margin-top:0">5. Exportación MIDI</h2>
+  <h2 style="margin-top:0">5. Exportación MIDI y JSON</h2>
   <p>El banco actual se exporta como un <b>ZIP con un archivo .mid por secuencia</b>
-  (etiquetados <code>banco_secuencia</code>, p. ej. <code>0_0.mid</code>). También se mantiene
-  la opción de un único SMF formato 1 con una pista por secuencia (PPQ 480).</p>
+  (etiquetados <code>&lt;secuencia&gt; - &lt;grupo&gt;.mid</code>, p. ej.
+  <code>seq_1 - grupo_A.mid</code>). Cada pista MIDI lleva su propio tempo (FF 51 03).
+  También se mantiene la opción de un único SMF formato 1 con una pista por secuencia (PPQ 480).</p>
   <div class="fila">
     <button id="btnDescargarZIP">Descargar ZIP (1 .mid por secuencia)</button>
     <button id="btnDescargarMIDI">Descargar MIDI (banco, formato 1)</button>
     <span id="midiInfo"></span>
+  </div>
+  <div class="fila">
+    <button id="btnExportarJSON">Exportar bancos a JSON</button>
+    <button id="btnImportarJSON">Importar bancos desde JSON…</button>
+    <input type="file" id="jsonInput" accept=".json,application/json" hidden>
+    <span id="jsonInfo"></span>
   </div>
 </div>
 
@@ -208,9 +246,10 @@ La partitura VexFlow se carga desde CDN y requiere conexión a internet.</p>
   <h2 style="margin-top:0">6. Partitura VexFlow</h2>
   <p>La secuencia actual se dibuja como partitura de piano (pentagrama doble, agudos
   en clave de sol y graves en clave de fa, repartidos por el Do central). Toda la
-  secuencia va en un solo compás, sin líneas divisorias ni armadura. VexFlow se
-  carga desde CDN; sin red esta sección queda deshabilitada.</p>
+  secuencia va en un solo compás, sin líneas divisorias ni armadura. VexFlow se carga
+  desde la CDN <b>bajo demanda</b> (botón de abajo); sin red esta sección queda deshabilitada.</p>
   <div class="fila">
+    <button id="btnCargarVexflow">Cargar VexFlow</button>
     <button id="btnRedibujarPartitura">Redibujar</button>
     <button id="btnPngPartitura">Descargar PNG</button>
     <button id="btnSvgPartitura">Descargar SVG</button>
@@ -222,7 +261,6 @@ La partitura VexFlow se carga desde CDN y requiere conexión a internet.</p>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js"></script>
 <script src="./comdasuar.js"></script>
 <script>
 "use strict";
@@ -274,8 +312,8 @@ editorTa.addEventListener('input', () => { mostrarErrorEditor(''); renderizarRes
 editorTa.addEventListener('scroll', sincronizarScroll);
 renderizarResaltado();
 
-function etiquetaBancoSeq(bancoIndice, seqIndice){
-    return bancoIndice + '_' + seqIndice;
+function etiquetaBancoSeq(bancoIndice, grupoIndice, seqIndice){
+    return bancoIndice + '_' + grupoIndice + '_' + seqIndice;
 }
 
 function setInfo(texto){
@@ -295,21 +333,91 @@ function refreshBancos(){
     if (sel.options.length) sel.value = comdasuar.ADMIN.getBancoActualIndex();
 }
 
+function refreshGrupos(){
+    const sel = document.getElementById('grupoSel');
+    sel.innerHTML = '';
+    const banco = comdasuar.editBanco();
+    if (!banco) return;
+    banco.getGrupos().forEach((g) => {
+        const opt = document.createElement('option');
+        opt.value = g.indice;
+        opt.textContent = g.indice + ' - ' + g.nombre + ' (' + g.size + ')';
+        sel.appendChild(opt);
+    });
+    if (sel.options.length) sel.value = banco.getGrupoActualIndex();
+}
+
 function refreshSecuencias(){
     const sel = document.getElementById('seqSel');
     sel.innerHTML = '';
     const bi = comdasuar.ADMIN.getBancoActualIndex();
-    const banco = comdasuar.ADMIN.bancos[bi];
+    const banco = comdasuar.editBanco();
     if (banco){
-        banco.secuencias.forEach((s, si) => {
+        const gi = banco.getGrupoActualIndex();
+        const grupo = banco.getGrupos()[gi] || {secuencias: []};
+        (grupo.secuencias || []).forEach((s, si) => {
             const opt = document.createElement('option');
             opt.value = si;
-            opt.textContent = etiquetaBancoSeq(bi, si) + ' · ' + s.getNombre();
+            opt.textContent = etiquetaBancoSeq(bi, gi, si) + ' · ' + s.getNombre();
             sel.appendChild(opt);
         });
     }
     if (sel.options.length) sel.value = comdasuar.editBanco().getSecuenciaActualIndex();
     refreshTransmutaOrigen();
+}
+
+function refreshGridGrupos(){
+    const tabla = document.getElementById('gridGrupos');
+    tabla.innerHTML = '';
+    const banco = comdasuar.editBanco();
+    if (!banco || banco.getSizeGrupos() === 0){
+        tabla.innerHTML = '<tr><td class="vacio">(sin grupos — agregue una secuencia o pulse "Nuevo grupo")</td></tr>';
+        return;
+    }
+    const grupos = banco.getGrupos();
+    const gi = banco.getGrupoActualIndex();
+    const si = banco.getSecuenciaActualIndex();
+    let maxFilas = 0;
+    for (const g of grupos) maxFilas = Math.max(maxFilas, g.size);
+
+    const thead = document.createElement('tr');
+    thead.appendChild(document.createElement('th'));
+    for (const g of grupos){
+        const th = document.createElement('th');
+        th.textContent = g.nombre + ' (' + g.size + ')';
+        thead.appendChild(th);
+    }
+    tabla.appendChild(thead);
+
+    for (let fila = 0; fila < maxFilas; fila++){
+        const tr = document.createElement('tr');
+        const tdNum = document.createElement('td');
+        tdNum.textContent = fila;
+        tdNum.className = 'vacio';
+        tr.appendChild(tdNum);
+        grupos.forEach((g, gIdx) => {
+            const td = document.createElement('td');
+            const s = banco.getSeqG(gIdx, fila);
+            if (s){
+                if (gIdx === gi) td.classList.add('grupo-activo');
+                if (gIdx === gi && fila === si) td.classList.add('seq-activo');
+                td.textContent = s.getNombre() || '·';
+                td.className += ' celda';
+                td.title = etiquetaBancoSeq(comdasuar.ADMIN.getBancoActualIndex(), gIdx, fila) + ' · ' + s.getNombre();
+                td.addEventListener('click', () => {
+                    comdasuar.selSeqGrupo(gIdx, fila);
+                    refreshGrupos();
+                    refreshSecuencias();
+                    showInfo();
+                });
+            } else {
+                td.className = 'vacio';
+                td.textContent = '–';
+            }
+            tr.appendChild(td);
+        });
+        tabla.appendChild(tr);
+    }
 }
 
 function refreshTransmutaOrigen(){
@@ -324,12 +432,15 @@ function refreshTransmutaOrigen(){
     const sSel = document.getElementById('transmuta_seq');
     sSel.innerHTML = '';
     const bi = parseInt(bSel.value || 0);
-    if (comdasuar.ADMIN.bancos[bi]){
-        comdasuar.ADMIN.bancos[bi].secuencias.forEach((s, j) => {
-            const opt = document.createElement('option');
-            opt.value = j;
-            opt.textContent = j + ' - ' + s.getNombre();
-            sSel.appendChild(opt);
+    const banco = comdasuar.ADMIN.bancos[bi];
+    if (banco){
+        banco.getGrupos().forEach((g) => {
+            (g.secuencias || []).forEach((s, j) => {
+                const opt = document.createElement('option');
+                opt.value = g.indice + ':' + j;
+                opt.textContent = etiquetaBancoSeq(bi, g.indice, j) + ' · ' + g.nombre + ' · ' + s.getNombre();
+                sSel.appendChild(opt);
+            });
         });
     }
 }
@@ -346,14 +457,25 @@ function showInfo(){
         redibujarPartitura();
         return;
     }
-    document.getElementById('etiquetaSeq').textContent = etiquetaBancoSeq(comdasuar.ADMIN.getBancoActualIndex(), seq.getIndice());
+    const bi = comdasuar.ADMIN.getBancoActualIndex();
+    const gi = banco.getGrupoActualIndex();
+    document.getElementById('etiquetaSeq').textContent = etiquetaBancoSeq(bi, gi, seq.getIndice()) +
+        ' · ' + banco.getGrupos()[gi].nombre;
     document.getElementById('nombreSeq').value = seq.getNombre() || '';
     const out = [];
     out.push("== Secuencia '" + seq.getNombre() + "' ==");
-    out.push('Índice (en banco) : ' + seq.getIndice());
+    out.push('Coordenadas       : banco ' + bi + ', grupo ' + gi + ' (' + banco.getGrupos()[gi].nombre + '), fila ' + seq.getIndice());
     out.push('Tempo             : ' + seq.tempo.figura + '=' + seq.tempo.pulsosPorMin + ' (pulso ' + seq.tempo.duracionPulso + ' ms)');
+    if (seq.getCompas()){
+        out.push('Firma de tiempo   : ' + seq.getCompas().texto +
+            ' (' + seq.getCompas().numerador + '/' + seq.getCompas().denominador +
+            (seq.getCompas().agrupacion ? ', agrupación ' + seq.getCompas().agrupacion.join('+') : '') + ')');
+    }
     out.push('Duración total    : ' + (seq.getDuracionTotal()/1000).toFixed(3) + ' s  (' + seq.getDuracionTotal().toFixed(0) + ' ms)');
     out.push('Nº de notas       : ' + seq.getNotas().length);
+    if (seq.estaTransformada()){
+        out.push('Transformado      : SÍ (' + seq.getTransformaciones().map(t => t.op).join(', ') + ') — "Restaurar original" revierte');
+    }
     out.push('');
     out.push('MIDIcents  : [' + seq.getMidicents().join(', ') + ']');
     out.push('Duraciones : [' + seq.getDuraciones().map(d=>d.toFixed(1)).join(', ') + ']');
@@ -381,7 +503,9 @@ function showInfo(){
 
 function refrescarTodo(){
     refreshBancos();
+    refreshGrupos();
     refreshSecuencias();
+    refreshGridGrupos();
     showInfo();
     redibujarPartitura();
 }
@@ -462,7 +586,9 @@ function descargarZIP(){
     }
     const zip = MIDIexport.bancos2zip(banco);
     MIDIexport.descargar(zip, MIDIexport.nombreArchivoBanco(banco) + '_bancos.zip');
-    const nombres = banco.secuencias.map((s, i) => MIDIexport.etiquetaSecuencia(banco, i) + '.mid').join(', ');
+    const nombres = MIDIexport.secuenciasConGrupo(banco)
+        .map(p => MIDIexport.etiquetaSecuenciaGrupo(p.seq, p.grupo) + '.mid')
+        .join(', ');
     document.getElementById('midiInfo').textContent = banco.getSize() + ' secuencia(s) -> ' + zip.length + ' bytes (' + nombres + ')';
 }
 
@@ -474,13 +600,58 @@ function descargarMIDI(){
     }
     const bytes = MIDIexport.bancos2mid(banco);
     MIDIexport.descargar(bytes, MIDIexport.nombreArchivoBanco(banco) + '.mid');
-    document.getElementById('midiInfo').textContent = banco.getSize() + ' secuencia(s) -> ' + bytes.length + ' bytes (SMF formato 1, PPQ 480)';
+    document.getElementById('midiInfo').textContent = banco.getSize() + ' secuencia(s) -> ' + bytes.length + ' bytes (SMF formato 1, PPQ 480, tempo propio por pista)';
 }
 
-// - - - partitura VexFlow - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
+// - - - exportación / importación JSON - - - - - - - - - - - - - - - - - - - - - - //
+function exportarJSON(){
+    const json = JSON.stringify(JSON.parse(comdasuar.ADMIN.exportarJSON()), null, 2);
+    MIDIexport.descargar(new TextEncoder().encode(json), 'comdasuar_bancos.json');
+    document.getElementById('jsonInfo').textContent = 'JSON exportado (' + json.length + ' caracteres).';
+}
+
+function importarJSON(texto){
+    comdasuar.ADMIN.cargarJSON(texto);
+    document.getElementById('jsonInfo').textContent = 'Bancos importados desde JSON.';
+    refrescarTodo();
+}
+
+const jsonInput = document.getElementById('jsonInput');
+document.getElementById('btnExportarJSON').addEventListener('click', exportarJSON);
+document.getElementById('btnImportarJSON').addEventListener('click', () => jsonInput.click());
+jsonInput.addEventListener('change', () => {
+    if (jsonInput.files && jsonInput.files[0]){
+        const lector = new FileReader();
+        lector.onload = () => {
+            try { importarJSON(String(lector.result)); }
+            catch (e) { document.getElementById('jsonInfo').textContent = 'Error al importar JSON: ' + e.message; }
+        };
+        lector.readAsText(jsonInput.files[0], 'utf-8');
+    }
+    jsonInput.value = '';
+});
+
+// - - - partitura VexFlow (carga bajo demanda) - - - - - - - - - - - - - - - - - - //
 
 const zonaPartitura = document.getElementById('partituraVexflow');
 const vexflowInfo = document.getElementById('vexflowInfo');
+
+let vexflowPromesa = null;
+/** Carga VexFlow desde la CDN solo cuando hace falta (no bloquea la carga de la
+ *  página). Devuelve una promesa que resuelve true si quedó disponible. */
+function cargarVexflow(){
+    if (window.Vex) return Promise.resolve(true);
+    if (vexflowPromesa) return vexflowPromesa;
+    vexflowInfo.textContent = '(cargando VexFlow desde la CDN…)';
+    vexflowPromesa = new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js';
+        s.onload = () => { vexflowInfo.textContent = 'VexFlow cargado.'; resolve(true); };
+        s.onerror = () => { vexflowInfo.textContent = 'No se pudo cargar VexFlow (sin conexión).'; resolve(false); };
+        document.head.appendChild(s);
+    });
+    return vexflowPromesa;
+}
 
 /** Convierte los descriptores del modelo (AsuarVexflow.compilar) en notas,
  *  agrupando los tuplets. Devuelve {notas, tuplets, voice, descriptores}. */
@@ -573,7 +744,7 @@ function dibujarPartitura(backend, contenedor, ancho){
 
 function redibujarPartitura(){
     if (!window.Vex){
-        zonaPartitura.innerHTML = '<span class="partitura-vacio">VexFlow no está disponible (sin conexión a la CDN).</span>';
+        zonaPartitura.innerHTML = '<span class="partitura-vacio">VexFlow no está disponible. Pulse "Cargar VexFlow" (requiere conexión a internet).</span>';
         vexflowInfo.textContent = '(VexFlow no cargado)';
         return;
     }
@@ -581,6 +752,11 @@ function redibujarPartitura(){
     const seq = comdasuar.editSeq();
     const ancho = Math.max(zonaPartitura.clientWidth || 900, 900);
     dibujarPartitura(Vex.Flow.Renderer.Backends.SVG, zonaPartitura, ancho);
+}
+
+async function redibujarPartituraAsync(){
+    await cargarVexflow();
+    redibujarPartitura();
 }
 
 function descargarPartituraPNG(){
@@ -665,13 +841,52 @@ document.getElementById('btnReemplazar').addEventListener('click', () => {
 
 document.getElementById('bancoSel').addEventListener('change', (e) => {
     comdasuar.selBanco(parseInt(e.target.value));
+    refreshGrupos();
     refreshSecuencias();
+    refreshGridGrupos();
+    showInfo();
+});
+
+document.getElementById('grupoSel').addEventListener('change', (e) => {
+    comdasuar.selGrupo(parseInt(e.target.value));
+    refreshSecuencias();
+    refreshGridGrupos();
     showInfo();
 });
 
 document.getElementById('seqSel').addEventListener('change', (e) => {
     comdasuar.selSeq(parseInt(e.target.value));
+    refreshGridGrupos();
     showInfo();
+});
+
+document.getElementById('btnNuevoGrupo').addEventListener('click', () => {
+    comdasuar.nuevoGrupo();
+    refrescarTodo();
+});
+
+document.getElementById('btnRenombrarGrupo').addEventListener('click', () => {
+    const banco = comdasuar.editBanco();
+    if (!banco || banco.getSizeGrupos() === 0) return;
+    const actual = banco.getGrupos()[banco.getGrupoActualIndex()];
+    const nombre = prompt('Nuevo nombre para el grupo "' + actual.nombre + '":', actual.nombre);
+    if (nombre === null) return;
+    banco.setGrupoNombre(banco.getGrupoActualIndex(), nombre);
+    refrescarTodo();
+});
+
+document.getElementById('btnEliminarGrupo').addEventListener('click', () => {
+    const banco = comdasuar.editBanco();
+    if (!banco || banco.getSizeGrupos() === 0) return;
+    if (!confirm('¿Eliminar el grupo seleccionado con todas sus secuencias?')) return;
+    comdasuar.deleteGrupo(banco.getGrupoActualIndex());
+    refrescarTodo();
+});
+
+document.getElementById('btnRestaurarSeq').addEventListener('click', () => {
+    if (!comdasuar.editSeq()) return;
+    comdasuar.restaurarSeq();
+    refrescarTodo();
 });
 
 document.getElementById('transmuta_banco').addEventListener('change', refreshTransmutaOrigen);
@@ -711,7 +926,8 @@ document.getElementById('btnPlay').addEventListener('click', reproducir);
 document.getElementById('btnStop').addEventListener('click', detener);
 document.getElementById('btnDescargarZIP').addEventListener('click', descargarZIP);
 document.getElementById('btnDescargarMIDI').addEventListener('click', descargarMIDI);
-document.getElementById('btnRedibujarPartitura').addEventListener('click', redibujarPartitura);
+document.getElementById('btnRedibujarPartitura').addEventListener('click', redibujarPartituraAsync);
+document.getElementById('btnCargarVexflow').addEventListener('click', redibujarPartituraAsync);
 document.getElementById('btnPngPartitura').addEventListener('click', descargarPartituraPNG);
 document.getElementById('btnSvgPartitura').addEventListener('click', descargarPartituraSVG);
 document.getElementById('btnImprimirPartitura').addEventListener('click', imprimirPartitura);
@@ -731,6 +947,7 @@ document.getElementById('btnRenombrarSeq').addEventListener('click', () => {
     if (!comdasuar.editSeq()) return;
     comdasuar.editSeq().setNombre(document.getElementById('nombreSeq').value);
     refreshSecuencias();
+    refreshGridGrupos();
     showInfo();
 });
 
@@ -760,13 +977,13 @@ const handlers = {
     desordenarDuraciones: () => comdasuar.desordenarDuracionesSeq(),
     transmutarAlturas:  () => {
         const b = parseInt(document.getElementById('transmuta_banco').value);
-        const s = parseInt(document.getElementById('transmuta_seq').value);
-        comdasuar.transmutarAlturasBankSeq(b, s);
+        const [g, s] = document.getElementById('transmuta_seq').value.split(':').map(Number);
+        comdasuar.transmutarAlturasGrupoSeq(b, g, s);
     },
     transmutarDuraciones: () => {
         const b = parseInt(document.getElementById('transmuta_banco').value);
-        const s = parseInt(document.getElementById('transmuta_seq').value);
-        comdasuar.transmutarDuracionesBankSeq(b, s);
+        const [g, s] = document.getElementById('transmuta_seq').value.split(':').map(Number);
+        comdasuar.transmutarDuracionesGrupoSeq(b, g, s);
     },
 };
 

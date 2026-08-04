@@ -7,10 +7,13 @@
 +=================================================================================*/
 
 const {getDiccionarioAsuar} = require('../diccionarioAsuar.js');
+const {AMSparser} = require('../AMSparser.js');
 
 /** Clasifica cada "palabra" del texto para colorear el código Asuar (AMS):
  *
- *   - 'modo'     -> comandos J.. y sus argumentos, y cambios de tempo (N=60)  [púrpura]
+ *   - 'modo'     -> comandos J.. y sus argumentos                            [púrpura]
+ *   - 'tempo'    -> cambio de tempo (N=60, B=90.5)                           [amarillo]
+ *   - 'compas'   -> firma de tiempo "[NNNN]", "[5/8]", "[3+2/8]"            [amarillo]
  *   - 'altura'   -> una altura/resto en posición de altura                   [verde]
  *   - 'duracion' -> una duración en posición de duración                     [azul]
  *   - 'repetir'  -> el operador "/" (repite la altura/duración anterior)
@@ -72,7 +75,9 @@ class ResaltadorAMS{
                 tipo = "modo";
                 argsPendientes--;
             }else if (palabra.includes("=")){   //cambio de tempo (ej. N=60)
-                tipo = /^[A-Z]+=[0-9]+(?:\.[0-9]+)?$/.test(palabra) ? "modo" : "error";
+                tipo = /^[A-Z]+=[0-9]+(?:\.[0-9]+)?$/.test(palabra) ? "tempo" : "error";
+            }else if (palabra[0] === "["){       //firma de tiempo (ej. [NNNN], [3+2/8])
+                tipo = AMSparser.validarCompas(palabra) ? "compas" : "error";
             }else if (palabra === "/"){          //repite la nota/duración anterior
                 tipo = "repetir";
                 if (modo === 0) pendienteAltura = !pendienteAltura;   //ocupa un hueco del par altura/duración

@@ -6,6 +6,7 @@
 | creado por José Vicente Asuar durante los años 70'.                             |
  +=================================================================================*/
 
+const {getDiccionarioAsuar} = require('./diccionarioAsuar.js');
 const {log} = require('./util.js');
 
 /**Convierte código Asuar (AMS) en lista de alturas y duraciones
@@ -30,6 +31,9 @@ class AMSparser{
             pulsosPorMin: 60,
             duracionPulso:1000
         }
+
+        //compás opcional "[NNNN]", "[NP.N]", "[5/8]", "[3+2/8]" (solo metadata)
+        this.compas = null;
 
         //misma secuencia pero con todas las redundancias necesarias para que el diccionarioAsuar las reconozca
         this.codigoPlano = {
@@ -193,6 +197,13 @@ class AMSparser{
             let codigoActual = this.listaDePalabras[i];
             log("Indice "+i+" : \'"+codigoActual+"\'");
 
+            //el elemento es una firma de tiempo [..] (solo metadata) -------------------------------//
+            if(codigoActual[0] == "["){
+                this.compas = AMSparser.parseCompas(codigoActual);
+                log(" * Firma de tiempo : "+JSON.stringify(this.compas));
+                continue;
+            }
+
             //el elemento es un cambio de modo J..  ---------------------------------------------------------//
             if(codigoActual.includes("J")){
                 if(codigoActual[1]=="0" || codigoActual.includes("0")){  //J0 introducción normal (default)
@@ -322,15 +333,147 @@ class AMSparser{
 
     /** API de alto nivel: carga, compila y entrega las secuencias planas y el tempo.
      * @param {string} amsString Partitura en código Asuar (AMS).
-     * @returns {Object} { alturas: string[], duraciones: string[], tempo: Object } */
+     * @returns {Object} { alturas: string[], duraciones: string[], tempo: Object, compas: Object|null } */
     parse(amsString){
         this.cargarPartitura(amsString);
         this.compilar();
         return {
             alturas: this.codigoPlano.alturas,
             duraciones: this.codigoPlano.duraciones,
-            tempo: this.tempo
+            tempo: this.tempo,
+            compas: this.compas
         };
+    }
+
+    /** @returns {Object|null} La firma de tiempo detectada en la última partitura (o null). */
+    getCompas(){ return this.compas; }
+
+    /** Interpreta y valida una firma de tiempo "[...]" (solo metadata: nunca produce notas).
+     *
+     *  Formas aceptadas:
+     *   - Figurada:  "[NNNN]" (4/4), "[NP.N]" y "[NPN]" (5/8 en 3+2), "[CCCCC]" (5/8),
+     *                "[CN]" (3/8). Cada figura con sus "P" es una agrupación; las
+     *                agrupaciones se separan con "." (opcional: sin puntos, cada
+     *                figura empieza una agrupación y "P" se adhiere a la anterior).
+     *   - Fracción:  "[5/8]" -> numerador/denominador directos, sin agrupación.
+     *   - Fracción agrupada: "[3+2/8]" -> 5/8 agrupado 3+2 (la suma de las partes
+     *                es el numerador y cada parte es una agrupación).
+     *
+     *  Para la forma figurada se deriva numerador/denominador con la regla del
+     *  mínimo común denominador: denominador = 4 * subdivisión, numerador =
+     *  total * subdivisión, agrupación = cuartos de cada grupo * subdivisión.
+     *
+     * @param {string} token Palabra completa "[...]".
+     * @returns {Object} {texto, grupos|null, duraciones|null, numerador, denominador, agrupacion|null}
+     * @throws {Error} Si la firma de tiempo es inválida. */
+    static parseCompas(token){
+        if(typeof token !== "string" || token[0] !== "[" || token[token.length-1] !== "]" || token.length < 3){
+            throw new Error("AMS: compás mal formado en '"+token+"'.");
+        }
+        const contenido = token.slice(1, -1);
+        if(contenido === ""){
+            throw new Error("AMS: compás vacío en '"+token+"'.");
+        }
+
+        //forma fraccionaria: [5/8] o [3+2/8] ------------------------------------------------//
+        if(contenido.includes("/")){
+            if(!/^\d+(\+\d+)*\/(\d+)$/.test(contenido)){
+                throw new Error("AMS: fracción de compás inválida en '"+token+"'.");
+            }
+            const [numeradorTexto, denominadorTexto] = contenido.split("/");
+            const partes = numeradorTexto.split("+").map((s) => parseInt(s, 10));
+            if(partes.length === 0 || partes.some((p) => Number.isNaN(p) || p < 1)){
+                throw new Error("AMS: agrupación de compás inválida en '"+token+"'.");
+            }
+            const denominador = parseInt(denominadorTexto, 10);
+            if(![1, 2, 4, 8, 16, 32, 64].includes(denominador)){
+                throw new Error("AMS: denominador de compás inválido (potencia de 2) en '"+token+"'.");
+            }
+            return {
+                texto: token,
+                grupos: null,
+                duraciones: null,
+                numerador: partes.reduce((a, b) => a + b, 0),
+                denominador: denominador,
+                agrupacion: partes.length > 1 ? partes : null,
+            };
+        }
+
+        //forma figurada: [NNNN], [NP.N], [NPN], [CCCCC] -------------------------------------//
+        const FIGURAS_COMPAS = "LRBNCSFM";
+        const grupos = [];
+        let grupoActual = null;
+        let puntoAnterior = false;
+        for(const c of contenido){
+            if(c === "."){
+                if(grupoActual === null || puntoAnterior){
+                    throw new Error("AMS: separador de agrupación mal ubicado en '"+token+"'.");
+                }
+                puntoAnterior = true;
+                continue;
+            }
+            if(c === "P"){
+                if(grupoActual === null || puntoAnterior){
+                    throw new Error("AMS: puntillo sin figura previa en '"+token+"'.");
+                }
+                grupoActual.puntillos++;
+                puntoAnterior = false;
+                continue;
+            }
+            if(FIGURAS_COMPAS.includes(c)){
+                grupoActual = {figura: c, puntillos: 0};
+                grupos.push(grupoActual);
+                puntoAnterior = false;
+                continue;
+            }
+            throw new Error("AMS: figura de compás no reconocida ('"+c+"') en '"+token+"'.");
+        }
+        if(puntoAnterior){
+            throw new Error("AMS: agrupación incompleta (termina en '.') en '"+token+"'.");
+        }
+        if(grupos.length === 0){
+            throw new Error("AMS: compás sin agrupaciones en '"+token+"'.");
+        }
+
+        //duración en cuartos de negra de cada agrupación (figura + puntillos)
+        const dict = getDiccionarioAsuar();
+        const cuartos = grupos.map((g) => {
+            let q = dict.ritmos[g.figura] / 1000;
+            let dot = q * 0.5;
+            for(let k = 0; k < g.puntillos; k++){
+                q += dot;
+                dot /= 2;
+            }
+            return q;
+        });
+
+        //regla del mínimo común denominador (potencia de 2 más fina que integra cada grupo)
+        let subdiv = 1;
+        for(const q of cuartos){
+            let ss = 1;
+            while(Math.abs(q * ss - Math.round(q * ss)) > 1e-6) ss *= 2;
+            subdiv = Math.max(subdiv, ss);
+        }
+
+        return {
+            texto: token,
+            grupos: grupos.map((g) => ({figura: g.figura, puntillo: g.puntillos})),
+            duraciones: cuartos,
+            numerador: Math.round(cuartos.reduce((a, b) => a + b, 0) * subdiv),
+            denominador: 4 * subdiv,
+            agrupacion: cuartos.map((q) => Math.round(q * subdiv)),
+        };
+    }
+
+    /** @param {string} token Palabra completa "[...]".
+     *  @returns {boolean} true si es una firma de tiempo válida. */
+    static validarCompas(token){
+        try{
+            AMSparser.parseCompas(token);
+            return true;
+        }catch(e){
+            return false;
+        }
     }
 
 }

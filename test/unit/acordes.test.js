@@ -192,7 +192,18 @@ test('un acorde suena todas sus alturas a la vez en el SMF', () => {
             if (!(byte & 0x80)) break;
         }
         const status = track[p];
-        if (status === 0xFF){ p++; const l = track[p]; p += 1 + l; continue; }
+        if (status === 0xFF){
+            p++;                     // status
+            p++;                     // tipo
+            let l = 0;               // longitud (VLQ)
+            while (true){
+                const byte = track[p++];
+                l = (l << 7) | (byte & 0x7F);
+                if (!(byte & 0x80)) break;
+            }
+            p += l;
+            continue;
+        }
         notas.push({delta, status, d1: track[p + 1], d2: track[p + 2]});
         p += 3;
     }

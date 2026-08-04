@@ -29,21 +29,43 @@ class MIDIexport {
 
     static get PPQ(){ return PPQ; }
 
+    /** Aplana un banco a la lista de SecuenciaAsuar, tanto si recibe un array de
+     *  secuencias, un banco legacy con `secuencias`, como un banco con `grupos`.
+     *  @returns {SecuenciaAsuar[]} */
+    static secuenciasDeBanco(banco){
+        return MIDIexport.secuenciasConGrupo(banco).map(p => p.seq);
+    }
+
+    /** Devuelve pares {seq, grupo} del banco en orden. Para arrays planos y bancos
+     *  legacy (sin grupos) la "columna" es "secuencias". */
+    static secuenciasConGrupo(banco){
+        const pares = [];
+        if (Array.isArray(banco)){
+            for (const s of banco) pares.push({seq: s, grupo: "secuencias"});
+        } else if (banco && Array.isArray(banco.grupos)){
+            for (const g of banco.grupos){
+                for (const s of (g.secuencias || [])) pares.push({seq: s, grupo: g.nombre || "grupo"});
+            }
+        } else if (banco && Array.isArray(banco.secuencias)){
+            for (const s of banco.secuencias) pares.push({seq: s, grupo: "secuencias"});
+        }
+        return pares;
+    }
+
     /** Convierte un banco completo a bytes MIDI.
-     *  @param {import('./BancoDeSecuencias.js').BancoDeSecuencias|Array} banco Banco con .secuencias o array de SecuenciaAsuar.
-     *  @returns {Uint8Array} Archivo SMF formato 1. */
+     *  @param {import('./BancoDeSecuencias.js').BancoDeSecuencias|Array} banco Banco con .grupos/.secuencias o array de SecuenciaAsuar.
+     *  @returns {Uint8Array} Archivo SMF formato 1.
+     *  Cada pista (secuencia) computa sus ticks y emite su propio tempo meta
+     *  (FF 51 03) en el tick 0: el banco es una paleta, no una línea de tiempo. */
     static bancos2mid(banco){
-        const secuencias = Array.isArray(banco) ? banco : (banco && banco.secuencias) || [];
+        const secuencias = MIDIexport.secuenciasDeBanco(banco);
         if (secuencias.length === 0){
             throw new Error("MIDIexport: el banco no contiene secuencias.");
         }
 
-        const quarterMs = MIDIexport.quarterMs(secuencias[0].getTempo());
-        const uspq = Math.round(quarterMs * 1000); // microsegundos por negra
-
-        const tracks = [MIDIexport.construirConductor(uspq)];
+        const tracks = [MIDIexport.construirConductor(Math.round(MIDIexport.quarterMs(secuencias[0].getTempo()) * 1000))];
         for (const seq of secuencias){
-            tracks.push(MIDIexport.construirTrack(seq, quarterMs));
+            tracks.push(MIDIexport.construirTrack(seq, MIDIexport.quarterMs(seq.getTempo()), true));
         }
         return MIDIexport.construirArchivo(tracks);
     }
@@ -53,8 +75,8 @@ class MIDIexport {
         return MIDIexport.bancos2mid([seq]);
     }
 
-    /** Etiqueta para una secuencia dentro de un banco. Se usa como nombre de
-     *  archivo en el ZIP exportado.
+    /** Etiqueta para una secuencia dentro de un banco legacy (lista plana). Se
+     *  mantiene solo para compatibilidad con bancos sin grupos.
      *  Si el banco y/o la secuencia tienen un nombre propio (no el de defecto),
      *  devuelve `<nombreBanco>_<nombreSecuencia>` (saneados); en caso contrario
      *  vuelve a la etiqueta numérica de siempre `<indiceBanco>_<i>`. */
@@ -79,6 +101,19 @@ class MIDIexport {
         return bancoIdx + "_" + i;
     }
 
+    /** Etiqueta de archivo para una secuencia con su grupo: `<secuencia> - <grupo>`.
+     *  Usa SIEMPRE los nombres (aunque sean los por defecto seq_1/grupo_A). */
+    static etiquetaSecuenciaGrupo(seq, grupo){
+        let nombreSeq = "";
+        let nombreGrupo = "";
+        if (seq && typeof seq.getNombre === "function") nombreSeq = seq.getNombre();
+        if (grupo) nombreGrupo = grupo;
+
+        nombreSeq = MIDIexport.sanitizarNombre(nombreSeq) || "secuencia";
+        nombreGrupo = MIDIexport.sanitizarNombre(nombreGrupo) || "grupo";
+        return nombreSeq + " - " + nombreGrupo;
+    }
+
     /** Sanea un nombre para poder usarlo como nombre de archivo: elimina
      *  caracteres ilegales en nombres de archivo (`/\:*?"<>|`), caracteres de
      *  control, puntos finales y espacios redundantes. Vacío si no queda nada. */
@@ -98,7 +133,7 @@ class MIDIexport {
         if (typeof nombre !== "string") return true;
         nombre = nombre.trim();
         if (nombre === "") return true;
-        return /^\[Asuar(Bank|Seq)\]$/.test(nombre) || /^AsuarSeq(_\d+)?$/.test(nombre);
+        return /^\[Asuar(Bank|Seq)\]$/.test(nombre) || /^AsuarSeq(_\d+)?$/.test(nombre) || /^seq_\d+$/.test(nombre);
     }
 
     /** Nombre base (sin extensión) para el archivo MIDI de un banco entero:
@@ -113,17 +148,17 @@ class MIDIexport {
     }
 
     /** Convierte un banco completo a un ZIP con un archivo .mid por secuencia.
-     *  Cada entrada se llama `{banco}_{secuencia}.mid` (p. ej. `0_0.mid`).
-     *  @param {import('./BancoDeSecuencias.js').BancoDeSecuencias|Array} banco Banco con .secuencias o array de SecuenciaAsuar.
+     *  Cada entrada se llama `<secuencia> - <grupo>.mid` (p. ej. `seq_1 - grupo_A.mid`).
+     *  @param {import('./BancoDeSecuencias.js').BancoDeSecuencias|Array} banco Banco con .grupos/.secuencias o array de SecuenciaAsuar.
      *  @returns {Uint8Array} Archivo ZIP (entradas sin comprimir). */
     static bancos2zip(banco){
-        const secuencias = Array.isArray(banco) ? banco : (banco && banco.secuencias) || [];
-        if (secuencias.length === 0){
+        const pares = MIDIexport.secuenciasConGrupo(banco);
+        if (pares.length === 0){
             throw new Error("MIDIexport: el banco no contiene secuencias.");
         }
 
-        const entradas = secuencias.map((seq, i) => ({
-            nombre: MIDIexport.etiquetaSecuencia(banco, i) + ".mid",
+        const entradas = pares.map(({seq, grupo}) => ({
+            nombre: MIDIexport.etiquetaSecuenciaGrupo(seq, grupo) + ".mid",
             bytes: MIDIexport.secuencia2mid(seq)
         }));
         return crearZip(entradas);
@@ -159,8 +194,9 @@ class MIDIexport {
         return bytes;
     }
 
-    /** Construye la pista de una secuencia: nombre + notas + fin. */
-    static construirTrack(seq, quarterMs){
+    /** Construye la pista de una secuencia: nombre + notas + fin. Si `conTempo`
+     *  es true emite el tempo propio de la secuencia (FF 51 03) en el tick 0. */
+    static construirTrack(seq, quarterMs, conTempo){
         const bytes = [];
         let lastTick = 0;
 
@@ -177,6 +213,10 @@ class MIDIexport {
             lastTick = Math.round(tick);
         };
 
+        if (conTempo){
+            const uspq = Math.round(quarterMs * 1000);
+            emitirMeta(0, 0x51, [(uspq >> 16) & 0xFF, (uspq >> 8) & 0xFF, uspq & 0xFF]);
+        }
         emitirMeta(0, 0x03, asciiBytes((seq.getNombre() || "Track").trim()));
 
         for (const nota of seq.getNotas()){

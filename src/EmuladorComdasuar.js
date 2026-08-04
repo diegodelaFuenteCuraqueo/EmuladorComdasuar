@@ -35,6 +35,31 @@ class EmuladorComdasuar{
 
     getBancoSecuencia(bancoI, seqI){    return this.ADMIN.getBancoSecuencia(bancoI, seqI);}
 
+    getBancoSecuenciaG(bancoI, g, i){   return this.ADMIN.getBancoSecuenciaG(bancoI, g, i);}
+
+    //Grupos -------------------------------------------------------------------
+    nuevoGrupo(){            return this.editBanco().nuevoGrupo(); }
+    deleteGrupo(indice){     return this.editBanco().deleteGrupo(indice); }
+    getGrupos(){             return this.editBanco().getGrupos(); }
+    setGrupoNombre(indice, nombre){ return this.editBanco().setGrupoNombre(indice, nombre); }
+    selGrupo(indice){        this.editBanco().selGrupo(indice); }
+    getGrupoActualIndex(){   return this.editBanco().getGrupoActualIndex(); }
+    getSizeGrupos(){         return this.editBanco().getSizeGrupos(); }
+
+    //API por coordenadas (grupo, indice) ---------------------------------------
+    getSeqGrupo(g, i){       return this.editBanco().getSeqG(g, i); }
+    addSeqGrupoAMS(g, ams){  return this.editBanco().addSeqGrupoAMS(g, ams); }
+    selSeqGrupo(g, i){       this.editBanco().selSeqGrupo(g, i); }
+    editSeqGrupo(g, i){      return this.editBanco().editSeqGrupo(g, i); }
+    flatten(){               return this.editBanco().flatten(); }
+
+    /** Restaura la secuencia seleccionada a su estado original (recompila codigoAMS).
+     *  @returns {boolean} true si se restauró. */
+    restaurarSeq(){
+        const seq = this.editSeq();
+        return seq && typeof seq.restaurarOriginal === "function" ? seq.restaurarOriginal() : false;
+    }
+
     /** Ingresa una nueva partitura al BancoDeSecuencias actual, a partir de la partitura ingresada en formato AMS.
      * @param {string} ams Partitura en formato AMS, que será ingresada en el banco actual. */
     nuevaPartituraAMS(ams){
@@ -127,6 +152,18 @@ class EmuladorComdasuar{
      * @param {number} seqIndice  indice identificador de la secuencia del banco B  */
     transmutarDuracionesBankSeq(bankIndice, seqIndice){
         Heuristicos.transmutarDuraciones( this.editSeq(), this.getBancoSecuencia(bankIndice,seqIndice) );
+    }
+
+    /** Transmuta las alturas de la secuencia seleccionada (A) con las alturas de
+     *  una secuencia B identificada por coordenadas (banco, grupo, indice). */
+    transmutarAlturasGrupoSeq(bankIndice, grupoIndice, seqIndice){
+        Heuristicos.transmutarAlturas( this.editSeq(), this.getBancoSecuenciaG(bankIndice, grupoIndice, seqIndice) );
+    }
+
+    /** Transmuta las duraciones de la secuencia seleccionada (A) con las duraciones
+     *  de una secuencia B identificada por coordenadas (banco, grupo, indice). */
+    transmutarDuracionesGrupoSeq(bankIndice, grupoIndice, seqIndice){
+        Heuristicos.transmutarDuraciones( this.editSeq(), this.getBancoSecuenciaG(bankIndice, grupoIndice, seqIndice) );
     }
 }
 

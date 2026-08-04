@@ -105,6 +105,7 @@ function datosSeq(seq){
     return {
         nombre: seq.getNombre(),
         tempo: seq.getTempo(),
+        compas: seq.getCompas ? seq.getCompas() : (seq.compas || null),
         notas: seq.getNotas().length,
         midicents: seq.getMidicents(),
         duraciones: seq.getDuraciones(),

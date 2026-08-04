@@ -7,6 +7,7 @@
 +=================================================================================*/
 
 const {NotaAsuar} = require('./NotaAsuar.js');
+const {AMSparser} = require('./AMSparser.js');
 const {getDiccionarioAsuar} = require('./diccionarioAsuar.js');
 const {log} = require('./util.js');
 
@@ -28,6 +29,30 @@ class SecuenciaAsuar{
         this.seqIndex = -1;  //indice de la secuencia (relativo al banco dnd está almacenada)
 
         this.notas=[];
+        this.compas = null;  //firma de tiempo "[...]" (solo metadata), null si no hay
+
+        //historial de transformaciones aplicadas ({op, params}); vacío = original
+        this.transformaciones = [];
+    }
+
+    /** Crea una SecuenciaAsuar a partir de una partitura AMS (pipeline único de
+     *  parseo: alturas, duraciones, tempo y firma de tiempo). No la agrega a
+     *  ningún banco.
+     *  @param {string} ams Partitura en formato AMS.
+     *  @returns {SecuenciaAsuar} */
+    static desdeAMS(ams){
+        const AMS = new AMSparser();
+        const {alturas, duraciones, tempo, compas} = AMS.parse(ams);
+
+        const seq = new SecuenciaAsuar();
+        seq.setCodigoAMS(ams);
+        for(let x = 0; x < alturas.length; x++){
+            seq.addNota(new NotaAsuar(alturas[x], duraciones[x]));
+        }
+        seq.setTempo(tempo);
+        seq.aplicarTempo();
+        seq.setCompas(compas);
+        return seq;
     }
 
     clear(){
@@ -37,6 +62,8 @@ class SecuenciaAsuar{
         this.duracionTotal = 0;
         this.codigoAMS = "";
         this.seqIndex = -1;
+        this.compas = null;
+        this.transformaciones = [];
     }
 
     /** @param {NotaAsuar} nota Agrega un obj NotaAsuar al final de la secuencia     */
@@ -107,6 +134,8 @@ class SecuenciaAsuar{
         this.tempo = seq.tempo;
         this.codigoAMS = seq.codigoAMS;
         this.seqIndex = seq.seqIndex;
+        this.compas = seq.compas || null;
+        this.transformaciones = Array.isArray(seq.transformaciones) ? seq.transformaciones.slice() : [];
 
         this.notas=[];
         log(`\n*** Cargando secuencia: ${seq.nombre}  (${seq.notas.length} notas)`)
@@ -144,6 +173,42 @@ class SecuenciaAsuar{
         this.tempo.figura = t.figura;
         this.tempo.pulsosPorMin = t.pulsosPorMin;
         this.tempo.duracionPulso = (60/t.pulsosPorMin)*1000;
+    }
+
+    /** @param {Object|null} c Firma de tiempo {texto, grupos, duraciones, numerador, denominador, agrupacion} o null. */
+    setCompas(c){ this.compas = c || null; }
+
+    /** @param {string} op Nombre del proceso heurístico aplicado (p. ej. "transportar").
+     *  @param {Array} [params] Parámetros del proceso. */
+    registrarTransformacion(op, params){
+        this.transformaciones.push({op: op, params: params || []});
+    }
+
+    /** @returns {boolean} true si la secuencia ha sido transformada (tiene historial). */
+    estaTransformada(){ return this.transformaciones.length > 0; }
+
+    /** Restaura la secuencia a su estado original recompilando `codigoAMS`
+     *  (notas, tempo y firma de tiempo). Conserva `nombre` y `seqIndex` y
+     *  borra el historial de transformaciones.
+     *  @returns {boolean} true si se restauró; false si no hay `codigoAMS`. */
+    restaurarOriginal(){
+        if(typeof this.codigoAMS !== "string" || this.codigoAMS.trim() === ""){
+            return false;
+        }
+        const original = SecuenciaAsuar.desdeAMS(this.codigoAMS);
+        const nombre = this.nombre;
+        const seqIndex = this.seqIndex;
+
+        this.notas = original.notas;
+        this.tempo = original.tempo;
+        this.compas = original.compas;
+        this.duracionTotal = original.duracionTotal;
+        this.transformaciones = [];
+
+        this.nombre = nombre;
+        this.seqIndex = seqIndex;
+        this.codigoAMS = original.codigoAMS;
+        return true;
     }
 
     /**
@@ -250,6 +315,10 @@ class SecuenciaAsuar{
     getNotas(){         return this.notas;}
 
     getTempo(){         return this.tempo;}
+
+    getCompas(){        return this.compas;}
+
+    getTransformaciones(){ return this.transformaciones.slice();}
 
     getUltimaNota(){    return this.notas[this.notas.length-1];}
 

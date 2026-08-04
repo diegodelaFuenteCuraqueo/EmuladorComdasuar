@@ -12,6 +12,21 @@ const {BancoDeSecuencias} = require('../../src/BancoDeSecuencias.js');
 function leerU32(b, p){ return ((b[p] | b[p+1] << 8 | b[p+2] << 16 | b[p+3] << 24) >>> 0); }
 function leerU16(b, p){ return (b[p] | b[p+1] << 8); }
 
+/** Banco "legacy" con lista plana de secuencias (sin grupos): es el único
+ *  formato que sigue soportando MIDIexport.etiquetaSecuencia. */
+function bancoLegacy(nombre, secuencias){
+    const banco = {
+        nombre,
+        secuencias,
+        bancoIndice: 0,
+        setIndice(i){ this.bancoIndice = i; },
+        setNombre(n){ this.nombre = n; },
+        getNombre(){ return this.nombre; },
+        getIndice(){ return this.bancoIndice; },
+    };
+    return banco;
+}
+
 function leerZIP(zip){
     const b = Array.from(zip);
     const entradas = [];
@@ -67,7 +82,7 @@ test('crearZip soporta Uint8Array y Array como entrada', () => {
     assert.strictEqual(ent.crc, crc32(new Uint8Array([1, 2, 3])));
 });
 
-test('bancos2zip genera un .mid por secuencia con etiqueta banco_secuencia', () => {
+test('bancos2zip genera un .mid por secuencia etiquetado <seq> - <grupo>', () => {
     const banco = new BancoDeSecuencias('Test');
     banco.addSeqAMS('j1 n 4c 4d 4e');
     banco.addSeqAMS('j1 n 4f 4g 4a');
@@ -75,14 +90,14 @@ test('bancos2zip genera un .mid por secuencia con etiqueta banco_secuencia', () 
 
     const zip = MIDIexport.bancos2zip(banco);
     const entradas = leerZIP(zip);
-    assert.deepStrictEqual(entradas.map(e => e.nombre), ['2_0.mid', '2_1.mid']);
+    assert.deepStrictEqual(entradas.map(e => e.nombre), ['seq_1 - grupo_A.mid', 'seq_2 - grupo_A.mid']);
     for (const ent of entradas){
         assert.deepStrictEqual(ent.datos.slice(0, 4), [0x4D, 0x54, 0x68, 0x64], 'cada entrada es un SMF');
     }
 });
 
-test('etiquetaSecuencia usa indices banco/seq', () => {
-    const banco = new BancoDeSecuencias('x');
+test('etiquetaSecuencia (legacy, sin grupos) usa indices banco/seq', () => {
+    const banco = bancoLegacy('x', []);
     banco.setIndice(5);
     assert.strictEqual(MIDIexport.etiquetaSecuencia(banco, 3), '5_3');
     assert.strictEqual(MIDIexport.etiquetaSecuencia(null, 0), '0_0');
@@ -90,10 +105,9 @@ test('etiquetaSecuencia usa indices banco/seq', () => {
 });
 
 test('etiquetaSecuencia usa los nombres propios de banco y secuencia', () => {
-    const banco = new BancoDeSecuencias('Mi Banco');
+    const banco = bancoLegacy('Mi Banco', [BancoDeSecuencias.secuenciaDesdeAMS('j1 n 4c 4d 4e')]);
     banco.setIndice(2);
-    banco.addSeqAMS('j1 n 4c 4d 4e');
-    banco.getSeq(0).setNombre('Melodía');
+    banco.secuencias[0].setNombre('Melodía');
     assert.strictEqual(MIDIexport.etiquetaSecuencia(banco, 0), 'Mi Banco_Melodía');
 
     banco.setNombre('[AsuarBank] ');   // nombre por defecto: no cuenta
@@ -101,16 +115,14 @@ test('etiquetaSecuencia usa los nombres propios de banco y secuencia', () => {
 });
 
 test('etiquetaSecuencia ignora nombres por defecto y vuelve a los indices', () => {
-    const banco = new BancoDeSecuencias('x');
-    banco.addSeqAMS('j1 n 4c 4d 4e');   // addSeq asigna "AsuarSeq_0"
+    const banco = bancoLegacy('x', [BancoDeSecuencias.secuenciaDesdeAMS('j1 n 4c 4d 4e')]);
     banco.setIndice(2);
     assert.strictEqual(MIDIexport.etiquetaSecuencia(banco, 0), '2_0');
 });
 
 test('etiquetaSecuencia saneja caracteres ilegales del nombre', () => {
-    const banco = new BancoDeSecuencias('A/B:C');
-    banco.addSeqAMS('j1 n 4c');
-    banco.getSeq(0).setNombre('canción?');
+    const banco = bancoLegacy('A/B:C', [BancoDeSecuencias.secuenciaDesdeAMS('j1 n 4c')]);
+    banco.secuencias[0].setNombre('canción?');
     assert.strictEqual(MIDIexport.etiquetaSecuencia(banco, 0), 'A_B_C_canción_');
 });
 
@@ -135,7 +147,7 @@ test('nombreArchivoBanco devuelve el nombre propio o comdasuar', () => {
     assert.strictEqual(MIDIexport.nombreArchivoBanco(null), 'comdasuar');
 });
 
-test('bancos2zip usa los nombres de banco y secuencia', () => {
+test('bancos2zip usa los nombres propios de secuencia y grupo', () => {
     const banco = new BancoDeSecuencias('Concierto');
     banco.addSeqAMS('j1 n 4c 4d 4e');
     banco.addSeqAMS('j1 n 4f 4g 4a');
@@ -144,7 +156,7 @@ test('bancos2zip usa los nombres de banco y secuencia', () => {
 
     const zip = MIDIexport.bancos2zip(banco);
     const entradas = leerZIP(zip);
-    assert.deepStrictEqual(entradas.map(e => e.nombre), ['Concierto_Adagio.mid', 'Concierto_Allegro.mid']);
+    assert.deepStrictEqual(entradas.map(e => e.nombre), ['Adagio - grupo_A.mid', 'Allegro - grupo_A.mid']);
 });
 
 test('Persistencia.guardarZIP escribe y lee un ZIP real', () => {

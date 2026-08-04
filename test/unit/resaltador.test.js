@@ -46,9 +46,16 @@ test('comandos J y sus argumentos son púrpura', () => {
     assert.deepStrictEqual(tipos('J5 1 3 4C N'), ['modo', 'modo', 'modo', 'altura', 'duracion']);
 });
 
-test('cambio de tempo N=60 es púrpura; malformado es error', () => {
-    assert.deepStrictEqual(tipos('N=60 4C N'), ['modo', 'altura', 'duracion']);
+test('cambio de tempo N=60 es amarillo; malformado es error', () => {
+    assert.deepStrictEqual(tipos('N=60 4C N'), ['tempo', 'altura', 'duracion']);
     assert.deepStrictEqual(tipos('=60 4C N'), ['error', 'altura', 'duracion']);
+});
+
+test('las firmas de tiempo [...] válidas son compas; las malformadas son error', () => {
+    assert.deepStrictEqual(tipos('[3+2/8] 4C N'), ['compas', 'altura', 'duracion']);
+    assert.deepStrictEqual(tipos('[5/8] 4C N'), ['compas', 'altura', 'duracion']);
+    assert.deepStrictEqual(tipos('[NNNN] 4C N'), ['compas', 'altura', 'duracion']);
+    assert.deepStrictEqual(tipos('[XYZ] 4C N'), ['error', 'altura', 'duracion']);
 });
 
 test('la barra / es repetir (neutro) en ambos slots', () => {

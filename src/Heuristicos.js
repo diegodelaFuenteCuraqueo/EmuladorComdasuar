@@ -28,7 +28,9 @@ class Heuristicos{
         }
         AsuarSeq.setMidicents(midicents);
         log("    Alturas transportadas : "+ midicents.join(" ")+"\n [H] \n");
-
+        if(typeof AsuarSeq.registrarTransformacion === "function"){
+            AsuarSeq.registrarTransformacion("transportar", [intervalo]);
+        }
     }
 
     /**
@@ -43,7 +45,9 @@ class Heuristicos{
 
         AsuarSeq.setMidicentsPorEvento(porEvento.reverse());
         log("    Alturas retrogradadas : "+ AsuarSeq.getMidicentsPorEvento().map(e => "["+e.join(" ")+"]").join(" ")+"\n [H] \n");
-
+        if(typeof AsuarSeq.registrarTransformacion === "function"){
+            AsuarSeq.registrarTransformacion("retrogradarAlturas", []);
+        }
     }
 
     /**
@@ -57,7 +61,9 @@ class Heuristicos{
 
         AsuarSeq.setDuraciones(milisegundos.reverse());
         log("    Duraciones retrogradadas : "+ AsuarSeq.getDuraciones().join(" ")+` (${milisegundos.length})`+"\n [H] \n");
-
+        if(typeof AsuarSeq.registrarTransformacion === "function"){
+            AsuarSeq.registrarTransformacion("retrogradarDuraciones", []);
+        }
     }
 
     /**
@@ -71,6 +77,9 @@ class Heuristicos{
         let porEvento = AsuarSeq.getMidicentsPorEvento();
         desordenar(porEvento);
         AsuarSeq.setMidicentsPorEvento(porEvento);
+        if(typeof AsuarSeq.registrarTransformacion === "function"){
+            AsuarSeq.registrarTransformacion("desordenarAlturas", []);
+        }
     }
 
     /**
@@ -83,6 +92,9 @@ class Heuristicos{
         let Duraciones = AsuarSeq.getDuraciones();
         desordenar(Duraciones);
         AsuarSeq.setDuraciones(Duraciones);
+        if(typeof AsuarSeq.registrarTransformacion === "function"){
+            AsuarSeq.registrarTransformacion("desordenarDuraciones", []);
+        }
     }
 
     /**
@@ -102,6 +114,9 @@ class Heuristicos{
         }
         AsuarSeq.setMidicents(midicents);
         log("    Alturas invertidas : "+ AsuarSeq.getMidicents().join(" ")+"\n [H] \n");
+        if(typeof AsuarSeq.registrarTransformacion === "function"){
+            AsuarSeq.registrarTransformacion("invertir", [eje]);
+        }
     }
 
     /**
@@ -126,6 +141,9 @@ class Heuristicos{
         log(" *adding:" + midicents.join(" ") );
         AsuarSeq.setMidicents(midicents);
         log("    Alturas expandidas : "+ AsuarSeq.getMidicents().join(" ")+"\n [H] \n");
+        if(typeof AsuarSeq.registrarTransformacion === "function"){
+            AsuarSeq.registrarTransformacion("expandirAlturas", [eje, escala]);
+        }
     }
 
     /**
@@ -140,6 +158,9 @@ class Heuristicos{
             milisegundos[i] = milisegundos[i]*escala;
         }
         AsuarSeq.setDuraciones(milisegundos);
+        if(typeof AsuarSeq.registrarTransformacion === "function"){
+            AsuarSeq.registrarTransformacion("expandirDuraciones", [escala]);
+        }
     }
 
     /**
@@ -172,6 +193,9 @@ class Heuristicos{
         }
         log("    Alturas transmutadas (B->A) : "+ midicentsA.join(" ")+"\n [H] \n");
         AsuarSeqA.setMidicents(midicentsA);
+        if(typeof AsuarSeqA.registrarTransformacion === "function"){
+            AsuarSeqA.registrarTransformacion("transmutarAlturas", []);
+        }
     }
 
     /**
@@ -195,6 +219,9 @@ class Heuristicos{
         }
         log("    Duraciones transmutadas (B->A): "+ milisegundosA.join(" ")+"\n [H] \n");
         AsuarSeqA.setDuraciones(milisegundosA);
+        if(typeof AsuarSeqA.registrarTransformacion === "function"){
+            AsuarSeqA.registrarTransformacion("transmutarDuraciones", []);
+        }
     }
 
 }

@@ -75,6 +75,7 @@ class AsuarVexflow{
         const sec = this.secuencia;
         const notas = typeof sec.getNotas === "function" ? sec.getNotas() : (sec.notas || []);
         const tempo = typeof sec.getTempo === "function" ? sec.getTempo() : (sec.tempo || {figura:"N", pulsosPorMin:60});
+        const compas = typeof sec.getCompas === "function" ? sec.getCompas() : (sec.compas || null);
 
         const voces = {agudos: [], graves: []};
 
@@ -109,6 +110,12 @@ class AsuarVexflow{
         return {
             nombre: typeof sec.getNombre === "function" ? sec.getNombre() : (sec.nombre || ""),
             tempo: {figura: tempo.figura, pulsosPorMin: tempo.pulsosPorMin},
+            compas: compas ? {
+                texto: compas.texto,
+                numerador: compas.numerador,
+                denominador: compas.denominador,
+                agrupacion: compas.agrupacion || null,
+            } : null,
             compases: notas.length ? [{voces}] : [],
         };
     }

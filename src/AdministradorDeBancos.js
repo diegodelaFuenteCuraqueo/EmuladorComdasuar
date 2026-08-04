@@ -70,6 +70,15 @@ class AdministradorDeBancos{
         return this.bancos[bancoIndex].getSeq(seqIndex);
     }
 
+    /** @param {number} bancoIndex indice del banco.
+     *  @param {number} grupoIndex indice del grupo dentro del banco.
+     *  @param {number} seqIndex indice de la secuencia dentro del grupo.
+     *  @returns {SecuenciaAsuar|undefined} */
+    getBancoSecuenciaG(bancoIndex, grupoIndex, seqIndex){
+        log("Retornando secuencia "+seqIndex+" (grupo "+grupoIndex+") desde banco "+bancoIndex);
+        return this.bancos[bancoIndex].getSeqG(grupoIndex, seqIndex);
+    }
+
     /** @param {number} n indice del banco a manipular ( 0 a bancos.length ) */
     selBanco(n){
         if( n <= this.bancos.length -1 ){
@@ -119,6 +128,12 @@ class AdministradorDeBancos{
     /** Compila el JSON cargado, reemplazando los bancos actuales. */
     compilarJSON(){
         let arregloBancos=JSON.parse(this.JSONin);
+        while(typeof arregloBancos === 'string'){
+            arregloBancos=JSON.parse(arregloBancos);
+        }
+        if(!Array.isArray(arregloBancos)){
+            arregloBancos=[arregloBancos];
+        }
         this.bancos=[];
         log(" ~ COMPILANDO JSON, cargando bancos de secuencias... ~ ")
         for(let b of arregloBancos){
@@ -126,6 +141,7 @@ class AdministradorDeBancos{
             banco.cargarBanco(b);
             this.bancos.push(banco);
         }
+        this.selBanco(0);
     }
 
     /** Carga un texto JSON con los BancosDeSecuencias y los compila en cascada (instanciando objetos BancoDeSecuencia, SecuenciaAsuar, NotaAsuar, AlturaAsuar y DuracionAsuar)
@@ -152,10 +168,13 @@ class AdministradorDeBancos{
     }
 
     getEtiquetasSecuencias(){
-        let etiquetas = [];
+        const etiquetas = [];
+        const banco = this.editBanco();
 
-        for(let s of this.editBanco().secuencias){
-            etiquetas.push( s.getIndice() + " " + s.getNombre());
+        for(let g of banco.grupos){
+            for(let s of g.secuencias){
+                etiquetas.push( g.nombre + "_" + s.getIndice() + " - " + s.getNombre());
+            }
         }
         return etiquetas;
 

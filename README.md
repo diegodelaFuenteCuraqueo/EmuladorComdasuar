@@ -96,9 +96,68 @@ await reproductor.play();   // suena
 await reproductor.stop();   // detiene
 ```
 
+## Bancos como paleta de grupos × secuencias
+
+Un `BancoDeSecuencias` es una **paleta**: cada secuencia pertenece a un **grupo** (columna), y los grupos son organizacionales (no pistas; el banco no es una línea de tiempo). Un banco nuevo tiene cero grupos; el primer `addSeq`/`addSeqAMS` crea y selecciona `grupo_A`.
+
+```javascript
+const { BancoDeSecuencias } = require('./src/BancoDeSecuencias.js');
+
+const banco = new BancoDeSecuencias('Orquesta');
+banco.addSeqAMS('j1 n 4c 4d 4e');              // -> grupo_A, "seq_1"
+banco.addSeqAMS('j1 n 4f 4g 4a');              // -> grupo_A, "seq_2"
+
+banco.nuevoGrupo();                            // -> grupo_B (seleccionado)
+banco.setGrupoNombre(1, 'Cuerdas');
+banco.addSeqAMS('j1 n 5c 5d');                 // -> grupo_B, "seq_1" (se numeran por grupo)
+
+banco.selSeqGrupo(0, 1);                       // selecciona (grupo 0, fila 1)
+banco.editSeqGrupo(1, 0);                      // edita por coordenadas
+banco.getSeqG(0, 0);                           // secuencia por coordenadas
+banco.getGrupos();                             // [{nombre, size, indice}]
+banco.flatten();                               // todas las secuencias en orden
+banco.deleteGrupo(1);
+```
+
+Los nombres por defecto son `grupo_A`, `grupo_B`, … (próxima letra no usada) y `seq_1`, `seq_2`, … (base 1, **por grupo**). `cargarBanco` acepta el formato nuevo `{grupos: [{nombre, secuencias: [...]}]}` y el formato legacy `{secuencias: [...]}` (se envuelve en un solo `grupo_A`).
+
+## Firma de tiempo `[...]` (metadata)
+
+La partitura AMS puede llevar una firma de tiempo entre corchetes, en cualquiera de estas tres formas:
+
+```text
+[NNNN]       figuras: se suma la duración de cada figura
+[NP.N]       con puntillo y punto de grupo (equivale a [NPN]): 5/8 agrupado 3+2
+[5/8]        fracción simple
+[3+2/8]      fracción agrupada (las partes suman el numerador)
+```
+
+El compás es solo **metadata** (no genera notas ni afecta la reproducción); puede aparecer en cualquier lugar del texto y **la última escrita gana**. Se obtiene con `AMSparser.parseCompas(token)` o `SecuenciaAsuar.getCompas()`:
+
+```javascript
+const seq = BancoDeSecuencias.secuenciaDesdeAMS('j1 n [3+2/8] 4c 4d');
+seq.getCompas();   // {texto:'[3+2/8]', numerador:5, denominador:8, agrupacion:[3,2]}
+```
+
+`parseCompas` deriva `numerador`/`denominador` tomando `denominador = 4 × subdivisión` (la figura base es la negra, `N = 1`), así `[NP.N]` → 5/8 y `[NNNN]` → 4/4. `AMSparser.validarCompas(token)` valida sin lanzar. El `ResaltadorAMS` colorea los tokens `[...]` válidos como `compas` (amarillo) y los inválidos como `error`.
+
+## Provenance y restauración de secuencias
+
+Cada `SecuenciaAsuar` lleva un historial de las transformaciones heurísticas aplicadas. Todos los procesos de `Heuristicos` lo registran (`registrarTransformacion`), y `restaurarOriginal()` recompila el `codigoAMS` original (notas, tempo y firma de tiempo), conservando el nombre y el índice:
+
+```javascript
+const seq = BancoDeSecuencias.secuenciaDesdeAMS('j1 n 4c 4d 4e');
+Heuristicos.transportar(seq, 200);
+seq.estaTransformada();      // true
+seq.getTransformaciones();   // [{op:'transportar', params:[200]}]
+seq.restaurarOriginal();     // true (revierte y borra el historial)
+```
+
+En la fachada: `comdasuar.restaurarSeq()` restaura la secuencia seleccionada. El historial sobrevive a los round-trips JSON.
+
 ## Exportación MIDI
 
-`MIDIexport` convierte un banco (o una secuencia) a un `Uint8Array` con un archivo SMF **formato 1**: la pista 0 lleva el tempo y cada `SecuenciaAsuar` ocupa una pista propia (PPQ 480, sin running status). Los silencios generan pausas y los cuartos de tono se redondean al semitono más cercano.
+`MIDIexport` convierte un banco (o una secuencia) a un `Uint8Array` con un archivo SMF **formato 1**: la pista 0 lleva el tempo y cada `SecuenciaAsuar` ocupa una pista propia (PPQ 480, sin running status). Como el banco es una paleta (no una línea de tiempo), **cada pista emite su propio tempo meta (FF 51 03) en el tick 0**, usando el tempo de su secuencia. Los silencios generan pausas y los cuartos de tono se redondean al semitono más cercano.
 
 En Node (guardar en disco):
 
@@ -121,26 +180,25 @@ MIDIexport.descargar(bytes, 'banco.mid');
 
 ### ZIP con un `.mid` por secuencia
 
-`MIDIexport.bancos2zip(banco)` empaqueta cada secuencia como su propio archivo SMF y los comprime en un ZIP (entradas sin comprimir, compatibles con cualquier descompresor). Cada archivo se llama con la etiqueta `banco_secuencia`; si el banco o la secuencia tienen un nombre propio (no el de fábrica), ese nombre se usa en lugar del índice (p. ej. `Mi banco_La escala.mid`, `0_La escala.mid`, o `0_0.mid` si ambos son los de fábrica):
+`MIDIexport.bancos2zip(banco)` empaqueta cada secuencia como su propio archivo SMF y los comprime en un ZIP (entradas sin comprimir, compatibles con cualquier descompresor). Cada entrada se llama con la etiqueta **`<secuencia> - <grupo>.mid`** (p. ej. `seq_1 - grupo_A.mid`), construida por `MIDIexport.etiquetaSecuenciaGrupo(seq, grupo)`:
 
 ```javascript
 const { BancoDeSecuencias, MIDIexport } = require('./src/BancoDeSecuencias.js');
 const Persistencia = require('./src/Persistencia.js');
 
 const banco = new BancoDeSecuencias();
-banco.setIndice(2);
-banco.setNombre('Fantasía');
 banco.addSeqAMS('4C N 4E S');
+banco.getSeq(0).setNombre('La escala');
 banco.addSeqAMS('5A B 3G C');
 
-// Node: guarda un ZIP con Fantasía_AsuarSeq_0.mid y Fantasía_AsuarSeq_1.mid
+// Node: guarda un ZIP con "La escala - grupo_A.mid" y "seq_2 - grupo_A.mid"
 Persistencia.guardarZIP(MIDIexport.bancos2zip(banco), './bancos.zip');
 
 // Navegador: descarga el ZIP
 MIDIexport.descargar(MIDIexport.bancos2zip(banco), 'bancos.zip');
 ```
 
-La etiqueta se obtiene con `MIDIexport.etiquetaSecuencia(banco, i)`. Cuando el banco o la secuencia conservan el nombre de fábrica (`[AsuarBank] `, `[AsuarSeq] ` o `AsuarSeq_n`), el nombre se ignora y se usa su índice; en cuanto se les da un nombre propio, la etiqueta pasa a ser `<nombreBanco>_<nombreSecuencia>`. Los nombres se sanean para los nombres de archivo (se quitan `/\:*?"<>|` y caracteres de control, se colapsan espacios y se recortan los puntos iniciales y finales).
+Los nombres se sanean para los nombres de archivo (se quitan `/\:*?"<>|` y caracteres de control, se colapsan espacios y se recortan los puntos iniciales y finales). La etiqueta legacy `MIDIexport.etiquetaSecuencia(banco, i)` (`<nombreBanco>_<nombreSecuencia>` o `<indiceBanco>_<i>`) se conserva solo para bancos legacy con lista plana `secuencias`.
 
 ### Resaltado de sintaxis AMS (`ResaltadorAMS`)
 
@@ -160,7 +218,9 @@ Los segmentos son contiguos y reconstruyen el texto original exactamente (incluy
 
 | Tipo          | Color (en `test/manual.html`) | Significado                                        |
 |---------------|-------------------------------|----------------------------------------------------|
-| `modo`        | púrpura                       | comandos `J..` y sus argumentos, cambios de tempo (`N=60`) |
+| `modo`        | púrpura                       | comandos `J..` y sus argumentos                    |
+| `tempo`       | amarillo                      | cambio de tempo (`N=60`, `B=90.5`)                |
+| `compas`      | amarillo                      | firma de tiempo (`[NNNN]`, `[5/8]`, `[3+2/8]`)    |
 | `altura`      | verde                         | altura, silencio o acorde en posición de altura    |
 | `duracion`    | azul                          | figura, grupo o puntillo en posición de duración   |
 | `repetir`     | neutro                        | el operador `/` (repite la altura/duración previa) |
@@ -186,7 +246,7 @@ const arbol = vf.compilar();
 
 Cada nota del árbol trae su `midicent`, `altura` (nombre de nota VexFlow, p. ej. `'C/4'`), `octava`, `alteracion`, `figura`, `silencio`, `ligada` y `tuplet`. La figura es una duración VexFlow (`"4"`, `"8d"`, …); los grupos irregulares de `3`, `5` o `7` figuras se agrupan en un `Tuplet` (campo `tuplet` con el número de notas, `null` si no aplica) y las duraciones que no caben en una sola figura se encadenan con ligaduras de prolongación (`ligada: true`). Métodos públicos: `compilar()`, `claveDeMidicent(mc, preferBemol)`, `claveDeAltura()`, `duracionVexflow()`, `_redondear()`, `_figuraMasCercana()`, `_descriptor()` y `_expandirCeros()`.
 
-La página `test/manual.html` incluye un panel **"6. Partitura VexFlow"** que pinta este árbol con VexFlow 4 (cargado desde la CDN `https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js`; si no está disponible muestra "(VexFlow no cargado)") y permite redibujar, descargar PNG y SVG, e imprimir. En la partitura la secuencia completa ocupa un único compás (los compases se reservan para un futuro indicador de compás), la leyenda es `nombre — N=notas (figura=pulsosPorMin)` y las notas alteradas con `W` en AMS se escriben con bemoles; los cuartos de tono (U/V/T/R) se redondean al semitono más cercano.
+La página `test/manual.html` incluye un panel **"6. Partitura VexFlow"** que pinta este árbol con VexFlow 4 (cargado **bajo demanda** desde la CDN `https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js` con el botón "Cargar VexFlow", para no bloquear la carga de la página; si no está disponible muestra "(VexFlow no cargado)") y permite redibujar, descargar PNG y SVG, e imprimir. En la partitura la secuencia completa ocupa un único compás (los compases se reservan para un futuro indicador de compás), la leyenda es `nombre — N=notas (figura=pulsosPorMin)` y las notas alteradas con `W` en AMS se escriben con bemoles; los cuartos de tono (U/V/T/R) se redondean al semitono más cercano.
 
 > Nota: el panel de partitura necesita conexión (o un `vexflow.js` servido localmente junto al bundle); sin VexFlow el resto de la página funciona igual.
 
@@ -237,6 +297,9 @@ Cobertura por archivo (`test/unit/`):
 | `resaltador.test.js`      | `ResaltadorAMS`: segmentos, modos J0-J2, tempo, `/`, errores, `esAltura`/`esDuracion` |
 | `asuarvexflow.test.js`    | `AsuarVexflow`: claves, figuras/puntillos/ligaduras, grupos 3/5/7, división agudos/graves, silencios |
 | `edicion.test.js`         | `clone`, `deleteSeq`/`duplicarSeq`, `deleteBanco`, métodos de fachada      |
+| `grupos.test.js`          | Paleta de grupos: nombres por defecto, nuevo/eliminar/renombrar, coordenadas, JSON `{grupos}`/legacy, ZIP/MIDI con grupos, tempo propio por pista |
+| `compas.test.js`          | Firma de tiempo: figuras/fracción/fracción agrupada, derivación LCD, validez, resaltado y modelo VexFlow |
+| `restaurar.test.js`       | Provenance: registro de transformaciones, `restaurarOriginal`, round-trip JSON |
 | `reproductor.test.js`     | `midicent2hz`, comportamiento en Node (sin AudioContext)                   |
 
 ### 2. Prueba manual en el navegador
@@ -250,10 +313,11 @@ Abrir `http://localhost:3000` y probar `test/manual.html`:
 1. **Partituras de ejemplo** — elige una del menú y pulsa "Cargar en editor" (llena el textarea con su AMS).
 2. **Compilar** — pulsa "Agregar secuencia" (la agrega al banco) o "Reemplazar secuencia actual".
 3. **Reproducir** — pulsa ▶ Reproducir (WebAudio) / ■ Detener. Puedes cambiar tipo de onda y volumen.
-4. **Editar el banco** — cada secuencia se identifica con su etiqueta `banco_secuencia` (`0_0`, `0_1`, …). Puedes renombrar/duplicar/eliminar la secuencia seleccionada, y renombrar/eliminar el banco.
-5. **Heurísticos** — aplica transportar, invertir, retrogradar, expandir o transmutar sobre la secuencia seleccionada.
-6. **Exportar MIDI** — "Descargar ZIP (1 .mid por secuencia)" baja un ZIP con un archivo `banco_secuencia.mid` por secuencia; "Descargar MIDI (banco, formato 1)" genera el SMF multi-pista del banco completo.
-7. **Partitura VexFlow** — el panel "Partitura VexFlow" pinta la secuencia seleccionada en pentagrama doble (requiere VexFlow desde la CDN). "Redibujar" repinta, "PNG"/"SVG" descargan la imagen y "Imprimir" imprime solo la partitura.
+4. **Paleta de grupos** — el panel "2.5" muestra el banco como tabla de grupos (columnas) × secuencias (filas); clic en una celda selecciona esa secuencia. Puedes crear/renombrar/eliminar grupos.
+5. **Editar el banco** — cada secuencia se identifica con su etiqueta `banco_grupo_fila` (`0_0_0`, `0_0_1`, …). Puedes renombrar/duplicar la secuencia seleccionada, **"Restaurar original"** (revierte las transformaciones), y eliminar secuencia/banco.
+6. **Heurísticos** — aplica transportar, invertir, retrogradar, expandir o transmutar sobre la secuencia seleccionada (los orígenes de transmutación se listan por grupo).
+7. **Exportar** — "Descargar ZIP (1 .mid por secuencia)" baja un ZIP con un archivo `<secuencia> - <grupo>.mid` por secuencia; "Descargar MIDI (banco, formato 1)" genera el SMF multi-pista con tempo propio por pista; también hay **exportar/importar bancos a JSON**.
+8. **Partitura VexFlow** — VexFlow se carga **bajo demanda** ("Cargar VexFlow", desde la CDN) y no bloquea la carga de la página; "Redibujar" repinta, "PNG"/"SVG" descargan la imagen y "Imprimir" imprime solo la partitura.
 
 > Nota: `test/manual.html` también funciona abriéndolo con `file://`, pero el menú de partituras de ejemplo se oculta (requiere el servidor). El audio WebAudio necesita un gesto del usuario (clic en Reproducir).
 

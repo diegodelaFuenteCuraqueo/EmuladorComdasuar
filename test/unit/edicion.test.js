@@ -55,7 +55,7 @@ test('duplicarSeq() agrega una copia al final del banco', () => {
     assert.ok(copia);
     assert.strictEqual(banco.getSize(), 2);
     assert.strictEqual(banco.getSecuenciaActualIndex(), 1);
-    assert.strictEqual(copia.getNombre(), '[AsuarSeq] _copia');
+    assert.strictEqual(copia.getNombre(), 'seq_1_copia');
     assert.deepStrictEqual(copia.getMidicents(), banco.getSeq(0).getMidicents());
 
     assert.strictEqual(banco.duplicarSeq(99), null);
