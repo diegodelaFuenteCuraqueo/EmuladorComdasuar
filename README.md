@@ -22,6 +22,84 @@ npm run dev             # 2. servidor de desarrollo -> http://localhost:3000
 npm run build             # 3. (solo tras tocar src/) regenerar el bundle (dist/comdasuar.js)
 ```
 
+# Sintaxis Musical Asuar (AMS)
+Cada tono se expresa por su altura y duración:
+
+## 1. Altura
+La altura se indica con tres datos:
+Octava. Un número de O a 7. Es posible, por lo tanto, expresar 8 octavas.
+Grado de la escala. Se expresa según la convención:
+
+A=La
+B=Si
+C=Do
+D=Re
+E=Mi
+F=Fa
+G=Sol
+A=La
+B=Si
+R = Silencio
+
+### 1.1 Cromatismo
+Se usa la convención:
+S = Sostenido 
+W = Bemol
+Q = becuadro
+
+Además, las alteraciones de cuarto de tono:
+U = cuarto de tono ascendente
+T = tres cuartos del tono ascendente
+V = cuarto de tono descendente
+R = tres cuartos de tono descendente
+
+## 2. Duración
+M = semifusa
+F = fusa
+S = semicorchea
+C = corchea
+N = negra
+B = blanca
+R = redonda
+L = lunga
+P = punto (multiplica por 1,5 el valor anterior)
+Cualquier valor de duración se puede obtener por suma de los anteriores:
+
+NP o NC = negra+corchea
+
+## 3. Redundancia
+Para simplificar y acelerar la introducción de datos, se aprovecha la gran cantidad de redundancia que contiene la información musical. Es así que se indica al computador sólo aquellos elementos que varían de un tono a otro. Si hay algún elemento de notación: octava, grado, cromatismo, duración, que se mantenga constante, no es necesario indicarlo, sino el computador le asigna el valor que tenía en el tono anterior. 
+
+```
+3C C
+/ /
+E /
+/ /
+G /
+/ /
+E N 
+```
+
+## 4. Modos
+También se aprovecha la redundancia definiendo distintos modos de introducir los datos musicales:
+
+### 4.1 Modo 0 (J0): 
+Es el modo normal visto en los ejemplos anteriores. Para cada tono se indica su altura y duración.
+
+### 4.2 Modo 1 (J1): 
+Duración constante. Se indica al comienzo el valor de la duración común que tiene una serie de tonos.
+A continuación se indica sólo la altura de cada tono. 
+
+### 4.3 Modo 2 (J2): 
+Altura constante. Se indica al comienzo el valor del tono que se repite, siguiendo una secuencia rítmica.
+Después se indica el valor de cada duración. 
+
+### 4.4 Modo 4 (J4): 
+Reiteración. Este modo se utiliza cuando una sucesión de tonos se repite varias veces. Se indica primero el número de veces que se repite, y después, la sucesión de tonos, la que es delimitada por otro indicador de modo. 
+
+### 4.5 Modo 5 (J5): 
+Repite pásaje. Este modo inserta una lista de tonos que ya ha sido escrita en otra locación. Se indican los números del primero y último de los tonos del pasaje que se repetirá. 
+
 # Ejemplo de uso
 
 ```javascript
