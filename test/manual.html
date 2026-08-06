@@ -17,14 +17,19 @@
   button:hover { filter:brightness(1.1); }
   .fila { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; }
   .panel { background:var(--panel); border:1px solid var(--borde); border-radius:8px; padding:12px; margin:12px 0; }
+  .dos-columnas { display:flex; gap:12px; flex-wrap:wrap; height:55vh; }
+  .dos-columnas > .panel { flex:1 1 400px; min-width:280px; margin:12px 0 0; min-height:0; overflow-y:auto; max-height: 55vh; }
   label { font-size:12px; opacity:.8; }
-  pre#info { background:#191926; padding:10px; border-radius:6px; overflow:auto; white-space:pre-wrap; margin:0; font-size:12px; }
+  pre#info { display:none; background:#191926; padding:10px; border-radius:6px; overflow:auto; white-space:pre-wrap; margin:0; font-size:12px; }
   table { border-collapse:collapse; width:100%; font-size:12px; }
   .tabla-scroll { width:100%; overflow-x:auto; }
   th, td { border:1px solid var(--borde); padding:3px 8px; text-align:left; }
   th { background:#191926; }
-  .heuristicos .grupo { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center; }
-  .heuristicos input { width:90px; }
+  .heuristicos { margin-top:8px; }
+  .heuri-fila { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; margin:8px 0; }
+  .heuri-op { display:flex; flex-direction:column; gap:4px; align-items:flex-start; }
+  .heuri-args { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .heuri-op input { width:70px; }
   #volumen { width:120px; }
 
   /* - - - partitura VexFlow - - - */
@@ -67,18 +72,24 @@
   .grid-grupos { border-collapse:collapse; margin-top:8px; }
   .grid-grupos th, .grid-grupos td { border:1px solid #3b4261; padding:6px 10px; text-align:center; font-size:13px; }
   .grid-grupos th { background:#24273a; color:#cdd6f4; font-weight:600; }
-  .grid-grupos td.grupo-activo { background:#89b4fa22; outline:2px solid #89b4fa; }
-  .grid-grupos td.seq-activo  { background:#a6e3a122; outline:2px solid #a6e3a1; }
+  .grid-grupos th.grupo-activo { background:#89b4fa22; color:#89b4fa; }
+  .grid-grupos td.seq-activo  { background:#a6e3a122; outline:2px solid #a6e3a1; text-align:center; }
   .grid-grupos .celda { cursor:pointer; }
   .grid-grupos .celda:hover { background:#313552; }
   .grid-grupos .vacio { color:#6c7086; font-style:italic; }
+  .grid-grupos th { cursor:pointer; }
+  .nombre-editable { cursor:pointer; border-bottom:1px dashed #6c7086; }
+  .nombre-editable:hover { color:var(--acento); }
+  .editar-nombre { width:100%; box-sizing:border-box; font:inherit; color:#cdd6f4;
+    background:#1e1e2e; border:1px solid var(--acento); border-radius:4px; padding:2px 6px; }
 
   @media (max-width:640px){
     body { padding:10px; }
     h1 { font-size:16px; }
-    .fila, .heuristicos .grupo { gap:6px; }
-    .fila button, .heuristicos .grupo button { flex:1 1 auto; }
-    .fila select, .fila input, .heuristicos .grupo input { flex:1 1 auto; min-width:0; }
+    .fila, .heuri-fila { gap:6px; }
+    .fila button, .heuri-fila button { flex:1 1 auto; }
+    .fila select, .fila input, .heuri-fila select, .heuri-fila input { flex:1 1 auto; min-width:0; }
+    .dos-columnas > .panel { flex-basis:100%; }
     #volumen { width:100%; }
   }
 </style>
@@ -88,66 +99,115 @@
 <h1>Emulador COMDASUAR — Test manual</h1>
 <p class="sub">Parser AMS, secuencias, bancos como paleta de grupos × secuencias, heurísticos,
 reproducción WebAudio, exportación MIDI (ZIP con un .mid por secuencia, etiquetados
-<code>&lt;secuencia&gt; - &lt;grupo&gt;.mid</code>) y partitura VexFlow (pentagrama de piano, un compás por secuencia).
+<code>&lt;secuencia&gt; - &lt;grupo&gt;.mid</code>) y partitura VexFlow (pentagrama único, con clave de sol
+o de fa según el promedio de alturas de la secuencia, en un compás por secuencia).
 Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://</code> el bundle <code>comdasuar.js</code> debe estar junto a este archivo y no se muestran las partituras de ejemplo.
 La partitura VexFlow se carga desde CDN bajo demanda y requiere conexión a internet.</p>
 
 <div class="fila">
   <label><input type="checkbox" id="chkDebug"> Logs de depuración</label>
-  <button id="btnNuevoBanco">Nuevo banco</button>
 </div>
 
 <div class="panel">
-  <h2 style="margin-top:0">1. Partitura (código Asuar AMS)</h2>
+  <h2 style="margin-top:0">Exportación MIDI y JSON</h2>
+  <!-- <p>El banco actual se exporta como un <b>ZIP con un archivo .mid por secuencia</b>
+  (etiquetados <code>&lt;secuencia&gt; - &lt;grupo&gt;.mid</code>, p. ej.
+  <code>seq_1 - grupo_A.mid</code>). Cada pista MIDI lleva su propio tempo (FF 51 03).
+  También se mantiene la opción de un único SMF formato 1 con una pista por secuencia (PPQ 480).</p> -->
+  <div class="fila">
+    <button id="btnDescargarZIP">Descargar ZIP (1 .mid por secuencia)</button>
+    <button id="btnDescargarMIDI">Descargar MIDI (banco, formato 1)</button>
+    <button id="btnExportarJSON">Exportar bancos a JSON</button>
+    <button id="btnImportarJSON" style="background-color: lightgreen;">Importar bancos desde JSON…</button>
+    <input type="file" id="jsonInput" accept=".json,application/json" hidden>
+    <span id="midiInfo"></span>
+    <span id="jsonInfo"></span>
+  </div>
+</div>
+
+<div class="dos-columnas">
+
+<div class="panel">
+  <h2 style="margin-top:0">Partitura (código Asuar AMS)</h2>
   <div class="fila" id="scoresPanel">
     <label>Partituras de ejemplo:</label>
     <select id="scoresSel"></select>
     <button id="btnCargarScore">Cargar en editor</button>
   </div>
-  <div class="fila">
-    <button id="btnCargarArchivo">Cargar archivo…</button>
-    <input type="file" id="archivoInput" accept=".txt,.ams,.asc,text/plain" hidden>
-    <span id="archivoInfo" style="font-size:12px; opacity:.8"></span>
-  </div>
   <div class="editor">
-    <pre id="resaltado" aria-hidden="true"></pre>
-    <textarea id="partitura" spellcheck="false" autocomplete="off" autocapitalize="off">j1 n 6b 3as 5e 4f 3ew d 5aw 4a g 6fs 4c</textarea>
-  </div>
-  <div id="editorError"></div>
+      <pre id="resaltado" aria-hidden="true"></pre>
+      <textarea id="partitura" spellcheck="false" autocomplete="off" autocapitalize="off">j1 n 6b 3as 5e 4f 3ew d 5aw 4a g 6fs 4c</textarea>
+    </div>
+    <div id="editorError"></div>
+    <div class="fila">
+      <button id="btnCargarArchivo">Cargar archivo…</button>
+      <input type="file" id="archivoInput" accept=".txt,.ams,.asc,text/plain" hidden>
+      <span id="archivoInfo" style="font-size:12px; opacity:.8"></span>
+    </div>
   <div class="fila">
     <button id="btnAgregar">Agregar secuencia</button>
-    <button id="btnReemplazar">Reemplazar secuencia actual</button>
+    <button id="btnReemplazar" style="background-color: rgb(208, 89, 224);">Reemplazar secuencia actual</button>
   </div>
 
-  <h2>2. Selección</h2>
-  <div class="fila">
-    <label>Banco:</label>
-    <select id="bancoSel"></select>
-    <label>Grupo:</label>
-    <select id="grupoSel"></select>
-    <label>Secuencia:</label>
-    <select id="seqSel"></select>
+  <div class="fila" style="margin-top:16px; align-items:center;">
+    <h2 style="margin:0">Heurísticos</h2>
+    <button id="btnToggleHeuristicos" style="background-color: yellow;">Mostrar heurísticos</button>
+  </div>
+  <div id="heuristicosCuerpo" class="heuristicos" hidden>
+    <div class="heuri-fila">
+      <div class="heuri-op">
+        <button data-h="transportar" style="background-color: yellow;">Transportar</button>
+        <div class="heuri-args">
+          <label>intervalo (mc)</label>
+          <input type="number" id="transportar_val" value="100">
+        </div>
+      </div>
+      <div class="heuri-op">
+        <button data-h="invertir" style="background-color: yellow;">Invertir</button>
+        <div class="heuri-args">
+          <label>eje (midi-note o mc)</label>
+          <input type="number" id="invertir_val" value="7200">
+        </div>
+      </div>
+      <div class="heuri-op">
+        <button data-h="expandirAlturas" style="background-color: yellow;">Expandir alturas</button>
+        <div class="heuri-args">
+          <label>eje</label>
+          <input type="number" id="expandirAlturas_eje" value="7200">
+          <label>escala</label>
+          <input type="number" id="expandirAlturas_esc" value="1.5" step="0.1">
+        </div>
+      </div>
+      <div class="heuri-op">
+        <button data-h="expandirDuraciones" style="background-color: yellow;">Expandir duraciones</button>
+        <div class="heuri-args">
+          <label>escala</label>
+          <input type="number" id="expandirDuraciones_esc" value="1.5" step="0.1">
+        </div>
+      </div>
+    </div>
+    <div class="heuri-fila">
+      <button data-h="retrogradarAlturas">Retrogradar alturas</button>
+      <button data-h="retrogradarDuraciones">Retrogradar duraciones</button>
+      <button data-h="desordenarAlturas">Desordenar alturas</button>
+      <button data-h="desordenarDuraciones">Desordenar duraciones</button>
+    </div>
+    <div class="heuri-fila">
+      <label>Transmutar desde banco:</label>
+      <select id="transmuta_banco"></select>
+      <label>secuencia:</label>
+      <select id="transmuta_seq"></select>
+      <button data-h="transmutarAlturas">Transmutar alturas</button>
+      <button data-h="transmutarDuraciones">Transmutar duraciones</button>
+    </div>
   </div>
 </div>
 
 <div class="panel">
-  <h2 style="margin-top:0">2.5. Paleta de grupos (columnas × secuencias)</h2>
-  <p class="sub">El banco es una paleta: cada <b>grupo</b> es una columna y las secuencias
-  se reparten en filas. Los grupos son organizacionales (no pistas). Haga clic en una
-  celda para seleccionar esa secuencia.</p>
+  <h2 style="margin-top:0">Propiedades de la secuencia seleccionada</h2>
   <div class="fila">
-    <button id="btnNuevoGrupo">Nuevo grupo</button>
-    <button id="btnRenombrarGrupo">Renombrar grupo seleccionado…</button>
-    <button id="btnEliminarGrupo">Eliminar grupo seleccionado</button>
-  </div>
-  <div class="tabla-scroll"><table id="gridGrupos" class="grid-grupos"></table></div>
-</div>
-
-<div class="panel">
-  <h2 style="margin-top:0">3. Propiedades de la secuencia seleccionada</h2>
-  <div class="fila">
-    <button id="btnPlay">▶ Reproducir</button>
-    <button id="btnStop">■ Detener</button>
+    <button id="btnPlay" style="background-color: lightgreen;">▶ Reproducir</button>
+    <button id="btnStop" style="background-color: rgb(233, 128, 128);">■ Detener</button>
     <label>Tipo de onda:</label>
     <select id="ondaSel">
       <option value="sine">sine</option>
@@ -162,18 +222,15 @@ La partitura VexFlow se carga desde CDN bajo demanda y requiere conexión a inte
   <div class="fila">
     <label>Etiqueta:</label>
     <span id="etiquetaSeq" style="font-weight:bold; color:var(--acento)">–</span>
-    <label>Banco:</label>
-    <input type="text" id="nombreBanco" size="24">
-    <button id="btnRenombrarBanco">Renombrar banco</button>
-    <button id="btnEliminarBanco">Eliminar banco</button>
-   </div> 
+  </div>
     <div class="fila">
     <label>Secuencia:</label>
-    <input type="text" id="nombreSeq" size="24">
-    <button id="btnRenombrarSeq">Renombrar</button>
-    <button id="btnDuplicarSeq">Duplicar</button>
-    <button id="btnRestaurarSeq">Restaurar original</button>
-    <button id="btnEliminarSeq">Eliminar</button>
+    <button id="btnDuplicarSeq" style="background-color: lightblue;">Duplicar</button>
+    <button id="btnRestaurarSeq" style="background-color: lightyellow;">Restaurar original</button>
+    <button id="btnEliminarSeq" style="background-color: rgb(233, 128, 128);">Eliminar</button>
+  </div>
+  <div class="fila">
+    <button id="btnToggleInfo">Mostrar detalle de la secuencia</button>
   </div>
   <pre id="info">(sin secuencia)</pre>
   <div class="tabla-scroll"><table id="notas">
@@ -182,72 +239,35 @@ La partitura VexFlow se carga desde CDN bajo demanda y requiere conexión a inte
   </table></div>
 </div>
 
-<div class="panel heuristicos">
-  <h2 style="margin-top:0">4. Heurísticos (procesos sobre la secuencia seleccionada)</h2>
-
-  <div class="grupo">
-    <button data-h="transportar">Transportar</button>
-    <label>intervalo (mc):</label><input type="number" id="transportar_val" value="100">
-  </div>
-
-  <div class="grupo">
-    <button data-h="invertir">Invertir</button>
-    <label>eje (midi-note o mc):</label><input type="number" id="invertir_val" value="7200">
-  </div>
-
-  <div class="grupo">
-    <button data-h="expandirAlturas">Expandir alturas</button>
-    <label>eje:</label><input type="number" id="expandirAlturas_eje" value="7200">
-    <label>escala:</label><input type="number" id="expandirAlturas_esc" value="1.5" step="0.1">
-  </div>
-
-  <div class="grupo">
-    <button data-h="expandirDuraciones">Expandir duraciones</button>
-    <label>escala:</label><input type="number" id="expandirDuraciones_esc" value="1.5" step="0.1">
-  </div>
-
-  <div class="grupo">
-    <button data-h="retrogradarAlturas">Retrogradar alturas</button>
-    <button data-h="retrogradarDuraciones">Retrogradar duraciones</button>
-    <button data-h="desordenarAlturas">Desordenar alturas</button>
-    <button data-h="desordenarDuraciones">Desordenar duraciones</button>
-  </div>
-
-  <div class="grupo">
-    <label>Transmutar desde banco:</label>
-    <select id="transmuta_banco"></select>
-    <label>secuencia:</label>
-    <select id="transmuta_seq"></select>
-    <button data-h="transmutarAlturas">Transmutar alturas</button>
-    <button data-h="transmutarDuraciones">Transmutar duraciones</button>
-  </div>
 </div>
 
 <div class="panel">
-  <h2 style="margin-top:0">5. Exportación MIDI y JSON</h2>
-  <p>El banco actual se exporta como un <b>ZIP con un archivo .mid por secuencia</b>
-  (etiquetados <code>&lt;secuencia&gt; - &lt;grupo&gt;.mid</code>, p. ej.
-  <code>seq_1 - grupo_A.mid</code>). Cada pista MIDI lleva su propio tempo (FF 51 03).
-  También se mantiene la opción de un único SMF formato 1 con una pista por secuencia (PPQ 480).</p>
+  <h2 style="margin-top:0">Paleta de grupos (columnas × secuencias)</h2>
+  <p class="sub">El banco es una paleta: cada <b>grupo</b> es una columna y las secuencias
+  se reparten en filas. Los grupos son organizacionales (no pistas). Haga clic en una
+  celda para seleccionar esa secuencia. <b>Doble clic</b> sobre el nombre de un banco,
+  grupo o secuencia para renombrarlo (Enter guarda, Escape cancela).</p>
   <div class="fila">
-    <button id="btnDescargarZIP">Descargar ZIP (1 .mid por secuencia)</button>
-    <button id="btnDescargarMIDI">Descargar MIDI (banco, formato 1)</button>
-    <span id="midiInfo"></span>
+    <label>Banco:</label>
+    <select id="bancoSel"></select>
+    <span id="bancoNombre" class="nombre-editable" title="Doble clic para renombrar el banco">–</span>
+    <button id="btnNuevoBanco">Nuevo banco</button>
+    <button id="btnEliminarBanco">Eliminar banco</button>
   </div>
   <div class="fila">
-    <button id="btnExportarJSON">Exportar bancos a JSON</button>
-    <button id="btnImportarJSON">Importar bancos desde JSON…</button>
-    <input type="file" id="jsonInput" accept=".json,application/json" hidden>
-    <span id="jsonInfo"></span>
+    <button id="btnNuevoGrupo">Nuevo grupo</button>
+    <button id="btnEliminarGrupo">Eliminar grupo seleccionado</button>
   </div>
+  <div class="tabla-scroll"><table id="gridGrupos" class="grid-grupos"></table></div>
 </div>
 
 <div class="panel">
-  <h2 style="margin-top:0">6. Partitura VexFlow</h2>
-  <p>La secuencia actual se dibuja como partitura de piano (pentagrama doble, agudos
-  en clave de sol y graves en clave de fa, repartidos por el Do central). Toda la
-  secuencia va en un solo compás, sin líneas divisorias ni armadura. VexFlow se carga
-  desde la CDN <b>bajo demanda</b> (botón de abajo); sin red esta sección queda deshabilitada.</p>
+  <h2 style="margin-top:0">Partitura VexFlow</h2>
+  <p>La secuencia actual se dibuja como partitura de <b>pentagrama único</b>: si el
+  promedio de alturas queda por debajo de <b>La3</b> se usa <b>clave de fa</b>; en o
+  por encima de La3, <b>clave de sol</b>. Toda la secuencia va en un solo compás,
+  sin líneas divisorias ni armadura. VexFlow se carga desde la CDN <b>bajo demanda</b>
+  (botón de abajo); sin red esta sección queda deshabilitada.</p>
   <div class="fila">
     <button id="btnCargarVexflow">Cargar VexFlow</button>
     <button id="btnRedibujarPartitura">Redibujar</button>
@@ -331,39 +351,32 @@ function refreshBancos(){
         sel.appendChild(opt);
     }
     if (sel.options.length) sel.value = comdasuar.ADMIN.getBancoActualIndex();
+    const banco = comdasuar.editBanco();
+    document.getElementById('bancoNombre').textContent = banco ? banco.getNombre() : '–';
 }
 
-function refreshGrupos(){
-    const sel = document.getElementById('grupoSel');
-    sel.innerHTML = '';
-    const banco = comdasuar.editBanco();
-    if (!banco) return;
-    banco.getGrupos().forEach((g) => {
-        const opt = document.createElement('option');
-        opt.value = g.indice;
-        opt.textContent = g.indice + ' - ' + g.nombre + ' (' + g.size + ')';
-        sel.appendChild(opt);
+function iniciarEdicionNombre(el, valor, guardar, refrescar){
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'editar-nombre';
+    input.value = valor;
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+    let cerrado = false;
+    const cerrar = (ok) => {
+        if (cerrado) return;
+        cerrado = true;
+        if (ok) guardar(input.value.trim());
+        refrescar();
+    };
+    input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') cerrar(true);
+        else if (e.key === 'Escape') cerrar(false);
     });
-    if (sel.options.length) sel.value = banco.getGrupoActualIndex();
-}
-
-function refreshSecuencias(){
-    const sel = document.getElementById('seqSel');
-    sel.innerHTML = '';
-    const bi = comdasuar.ADMIN.getBancoActualIndex();
-    const banco = comdasuar.editBanco();
-    if (banco){
-        const gi = banco.getGrupoActualIndex();
-        const grupo = banco.getGrupos()[gi] || {secuencias: []};
-        (grupo.secuencias || []).forEach((s, si) => {
-            const opt = document.createElement('option');
-            opt.value = si;
-            opt.textContent = etiquetaBancoSeq(bi, gi, si) + ' · ' + s.getNombre();
-            sel.appendChild(opt);
-        });
-    }
-    if (sel.options.length) sel.value = comdasuar.editBanco().getSecuenciaActualIndex();
-    refreshTransmutaOrigen();
+    input.addEventListener('blur', () => cerrar(false));
 }
 
 function refreshGridGrupos(){
@@ -382,11 +395,18 @@ function refreshGridGrupos(){
 
     const thead = document.createElement('tr');
     thead.appendChild(document.createElement('th'));
-    for (const g of grupos){
+    grupos.forEach((g, gIdx) => {
         const th = document.createElement('th');
         th.textContent = g.nombre + ' (' + g.size + ')';
+        th.title = 'Doble clic para renombrar';
+        if (gIdx === gi) th.classList.add('grupo-activo');
+        th.addEventListener('dblclick', () => {
+            iniciarEdicionNombre(th, g.nombre,
+                (v) => { if (v) comdasuar.editBanco().setGrupoNombre(gIdx, v); },
+                refrescarTodo);
+        });
         thead.appendChild(th);
-    }
+    });
     tabla.appendChild(thead);
 
     for (let fila = 0; fila < maxFilas; fila++){
@@ -399,16 +419,26 @@ function refreshGridGrupos(){
             const td = document.createElement('td');
             const s = banco.getSeqG(gIdx, fila);
             if (s){
-                if (gIdx === gi) td.classList.add('grupo-activo');
                 if (gIdx === gi && fila === si) td.classList.add('seq-activo');
                 td.textContent = s.getNombre() || '·';
                 td.className += ' celda';
                 td.title = etiquetaBancoSeq(comdasuar.ADMIN.getBancoActualIndex(), gIdx, fila) + ' · ' + s.getNombre();
                 td.addEventListener('click', () => {
                     comdasuar.selSeqGrupo(gIdx, fila);
-                    refreshGrupos();
-                    refreshSecuencias();
+                    const tabla = document.getElementById('gridGrupos');
+                    tabla.querySelectorAll('.seq-activo').forEach(el => el.classList.remove('seq-activo'));
+                    const thAntes = tabla.querySelector('th.grupo-activo');
+                    const thActivo = tabla.querySelector('tr:first-child').children[td.cellIndex];
+                    if (thAntes && thAntes !== thActivo) thAntes.classList.remove('grupo-activo');
+                    td.classList.add('seq-activo');
+                    if (thActivo) thActivo.classList.add('grupo-activo');
                     showInfo();
+                    cargarCodigoAMSEnEditor();
+                });
+                td.addEventListener('dblclick', () => {
+                    iniciarEdicionNombre(td, s.getNombre() || '',
+                        (v) => { if (v) s.setNombre(v); },
+                        refrescarTodo);
                 });
             } else {
                 td.className = 'vacio';
@@ -448,10 +478,8 @@ function refreshTransmutaOrigen(){
 function showInfo(){
     const seq = comdasuar.editSeq();
     const banco = comdasuar.editBanco();
-    document.getElementById('nombreBanco').value = banco ? banco.getNombre() : '';
     if (!seq){
         document.getElementById('etiquetaSeq').textContent = '–';
-        document.getElementById('nombreSeq').value = '';
         setInfo('(sin secuencia)');
         document.querySelector('#notas tbody').innerHTML = '';
         redibujarPartitura();
@@ -461,7 +489,6 @@ function showInfo(){
     const gi = banco.getGrupoActualIndex();
     document.getElementById('etiquetaSeq').textContent = etiquetaBancoSeq(bi, gi, seq.getIndice()) +
         ' · ' + banco.getGrupos()[gi].nombre;
-    document.getElementById('nombreSeq').value = seq.getNombre() || '';
     const out = [];
     out.push("== Secuencia '" + seq.getNombre() + "' ==");
     out.push('Coordenadas       : banco ' + bi + ', grupo ' + gi + ' (' + banco.getGrupos()[gi].nombre + '), fila ' + seq.getIndice());
@@ -503,11 +530,10 @@ function showInfo(){
 
 function refrescarTodo(){
     refreshBancos();
-    refreshGrupos();
-    refreshSecuencias();
     refreshGridGrupos();
     showInfo();
     redibujarPartitura();
+    refreshTransmutaOrigen();
 }
 
 // - - - partituras de ejemplo (servidor) - - - - - - - - - - - - - - - - - - - - //
@@ -537,6 +563,12 @@ function ponerEnEditor(texto){
     ta.scrollTop = 0;
     mostrarErrorEditor('');
     renderizarResaltado();
+}
+
+/** Vuelca el código AMS de la secuencia seleccionada en el editor. */
+function cargarCodigoAMSEnEditor(){
+    const seq = comdasuar.editSeq();
+    if (seq) ponerEnEditor(seq.codigoAMS || '');
 }
 
 /** Lee un archivo de texto y lo vuelca en el editor. */
@@ -677,6 +709,29 @@ function construirVozVexflow(descriptores, clef){
     return {notas: notas, tuplets: tuplets, voice: voice, descriptores: descriptores};
 }
 
+/** Fusiona las dos voces paralelas del modelo (agudos/graves) en una sola lista
+ *  de descriptores: las voces comparten índice de evento y figuras, así que
+ *  agudos[i] y graves[i] se combinan (un acorde si ambas aportan alturas). */
+function fundirVoces(voces){
+    return voces.agudos.map((dA, i) => {
+        const dG = voces.graves[i];
+        if (!dG) return dA;
+        if (dA.claves.length && dG.claves.length){
+            return {...dA, claves: dA.claves.concat(dG.claves).sort()};
+        }
+        return dA.claves.length ? dA : dG;
+    });
+}
+
+/** Clave del pentagrama único según el promedio de alturas de la secuencia:
+ *  por debajo de A3 (midicent 5700) se usa clave de fa; en/sobre A3, sol. */
+function clefDeSecuencia(seq){
+    const mcs = (typeof seq.getMidicents === 'function' ? seq.getMidicents() : []).filter(mc => mc > 0);
+    if (!mcs.length) return 'treble';
+    const media = mcs.reduce((a, b) => a + b, 0) / mcs.length;
+    return media < 5700 ? 'bass' : 'treble';
+}
+
 /** Dibuja la secuencia actual en `contenedor` con VexFlow. Devuelve el renderer
  *  (para PNG/SVG se reutiliza con un contenedor fuera de pantalla). */
 function dibujarPartitura(backend, contenedor, ancho){
@@ -690,54 +745,39 @@ function dibujarPartitura(backend, contenedor, ancho){
     const compas = modelo.compases[0];
     const caption = (seq.getNombre() || 'Sin nombre') + ' — N=' + seq.getNotas().length +
         ' (' + modelo.tempo.figura + '=' + modelo.tempo.pulsosPorMin + ')';
+    const clef = clefDeSecuencia(seq);
 
-    const alto = 210;
+    const alto = 130;
     const renderer = new Vex.Flow.Renderer(contenedor, backend);
     renderer.resize(ancho, alto);
     const ctx = renderer.getContext();
 
-    const stT = new Vex.Flow.Stave(0, 20, ancho);
-    stT.addClef('treble').setEndBarType(Vex.Flow.Barline.type.NONE);
-    stT.setText(caption, Vex.Flow.Modifier.Position.ABOVE);
-    const stB = new Vex.Flow.Stave(0, 150, ancho);
-    stB.addClef('bass').setEndBarType(Vex.Flow.Barline.type.NONE);
-
-    const brace = new Vex.Flow.StaveConnector(stT, stB).setType(Vex.Flow.StaveConnector.type.BRACE);
-    const barra = new Vex.Flow.StaveConnector(stT, stB).setType(Vex.Flow.StaveConnector.type.SINGLE_LEFT);
+    const st = new Vex.Flow.Stave(0, 20, ancho);
+    st.addClef(clef).setEndBarType(Vex.Flow.Barline.type.NONE);
+    st.setText(caption, Vex.Flow.Modifier.Position.ABOVE);
 
     if (compas){
-        const agudos = construirVozVexflow(compas.voces.agudos, 'treble');
-        const graves = construirVozVexflow(compas.voces.graves, 'bass');
-        new Vex.Flow.Formatter().joinVoices([agudos.voice, graves.voice])
-            .format([agudos.voice, graves.voice], ancho - 80);
+        const fundidas = fundirVoces(compas.voces);
+        const voz = construirVozVexflow(fundidas, clef);
+        new Vex.Flow.Formatter().joinVoices([voz.voice]).format([voz.voice], ancho - 80);
 
-        stT.setContext(ctx).draw();
-        stB.setContext(ctx).draw();
-        brace.setContext(ctx).draw();
-        barra.setContext(ctx).draw();
+        st.setContext(ctx).draw();
+        voz.voice.draw(ctx, st);
+        for (const t of voz.tuplets) t.setContext(ctx).draw();
 
-        agudos.voice.draw(ctx, stT);
-        graves.voice.draw(ctx, stB);
-        for (const t of agudos.tuplets.concat(graves.tuplets)) t.setContext(ctx).draw();
-
-        for (const v of [agudos, graves]){
-            for (let k = 0; k < v.descriptores.length - 1; k++){
-                const d = v.descriptores[k];
-                if (d.ligada && !d.silencio && !v.descriptores[k + 1].silencio){
-                    new Vex.Flow.StaveTie({
-                        first_note: v.notas[k],
-                        last_note: v.notas[k + 1],
-                        first_indices: [0],
-                        last_indices: [0],
-                    }).setContext(ctx).draw();
-                }
+        for (let k = 0; k < voz.descriptores.length - 1; k++){
+            const d = voz.descriptores[k];
+            if (d.ligada && !d.silencio && !voz.descriptores[k + 1].silencio){
+                new Vex.Flow.StaveTie({
+                    first_note: voz.notas[k],
+                    last_note: voz.notas[k + 1],
+                    first_indices: [0],
+                    last_indices: [0],
+                }).setContext(ctx).draw();
             }
         }
     } else {
-        stT.setContext(ctx).draw();
-        stB.setContext(ctx).draw();
-        brace.setContext(ctx).draw();
-        barra.setContext(ctx).draw();
+        st.setContext(ctx).draw();
     }
     return renderer;
 }
@@ -841,23 +881,7 @@ document.getElementById('btnReemplazar').addEventListener('click', () => {
 
 document.getElementById('bancoSel').addEventListener('change', (e) => {
     comdasuar.selBanco(parseInt(e.target.value));
-    refreshGrupos();
-    refreshSecuencias();
-    refreshGridGrupos();
-    showInfo();
-});
-
-document.getElementById('grupoSel').addEventListener('change', (e) => {
-    comdasuar.selGrupo(parseInt(e.target.value));
-    refreshSecuencias();
-    refreshGridGrupos();
-    showInfo();
-});
-
-document.getElementById('seqSel').addEventListener('change', (e) => {
-    comdasuar.selSeq(parseInt(e.target.value));
-    refreshGridGrupos();
-    showInfo();
+    refrescarTodo();
 });
 
 document.getElementById('btnNuevoGrupo').addEventListener('click', () => {
@@ -865,14 +889,12 @@ document.getElementById('btnNuevoGrupo').addEventListener('click', () => {
     refrescarTodo();
 });
 
-document.getElementById('btnRenombrarGrupo').addEventListener('click', () => {
+document.getElementById('bancoNombre').addEventListener('dblclick', () => {
     const banco = comdasuar.editBanco();
-    if (!banco || banco.getSizeGrupos() === 0) return;
-    const actual = banco.getGrupos()[banco.getGrupoActualIndex()];
-    const nombre = prompt('Nuevo nombre para el grupo "' + actual.nombre + '":', actual.nombre);
-    if (nombre === null) return;
-    banco.setGrupoNombre(banco.getGrupoActualIndex(), nombre);
-    refrescarTodo();
+    if (!banco) return;
+    iniciarEdicionNombre(document.getElementById('bancoNombre'), banco.getNombre(),
+        (v) => { if (v) banco.setNombre(v); },
+        () => { refreshBancos(); refreshTransmutaOrigen(); });
 });
 
 document.getElementById('btnEliminarGrupo').addEventListener('click', () => {
@@ -887,6 +909,22 @@ document.getElementById('btnRestaurarSeq').addEventListener('click', () => {
     if (!comdasuar.editSeq()) return;
     comdasuar.restaurarSeq();
     refrescarTodo();
+});
+
+document.getElementById('btnToggleInfo').addEventListener('click', () => {
+    const info = document.getElementById('info');
+    const visible = info.style.display === 'block';
+    info.style.display = visible ? 'none' : 'block';
+    document.getElementById('btnToggleInfo').textContent =
+        visible ? 'Mostrar detalle de la secuencia' : 'Ocultar detalle de la secuencia';
+});
+
+document.getElementById('btnToggleHeuristicos').addEventListener('click', () => {
+    const cuerpo = document.getElementById('heuristicosCuerpo');
+    const oculto = cuerpo.hidden;
+    cuerpo.hidden = !oculto;
+    document.getElementById('btnToggleHeuristicos').textContent =
+        oculto ? 'Ocultar heurísticos' : 'Mostrar heurísticos';
 });
 
 document.getElementById('transmuta_banco').addEventListener('change', refreshTransmutaOrigen);
@@ -932,23 +970,10 @@ document.getElementById('btnPngPartitura').addEventListener('click', descargarPa
 document.getElementById('btnSvgPartitura').addEventListener('click', descargarPartituraSVG);
 document.getElementById('btnImprimirPartitura').addEventListener('click', imprimirPartitura);
 
-document.getElementById('btnRenombrarBanco').addEventListener('click', () => {
-    comdasuar.editBanco().setNombre(document.getElementById('nombreBanco').value);
-    refrescarTodo();
-});
-
 document.getElementById('btnEliminarBanco').addEventListener('click', () => {
     if (!confirm('¿Eliminar el banco actual con todas sus secuencias?')) return;
     comdasuar.eliminarBanco();
     refrescarTodo();
-});
-
-document.getElementById('btnRenombrarSeq').addEventListener('click', () => {
-    if (!comdasuar.editSeq()) return;
-    comdasuar.editSeq().setNombre(document.getElementById('nombreSeq').value);
-    refreshSecuencias();
-    refreshGridGrupos();
-    showInfo();
 });
 
 document.getElementById('btnDuplicarSeq').addEventListener('click', () => {
