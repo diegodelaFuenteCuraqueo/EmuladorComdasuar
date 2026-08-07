@@ -322,7 +322,7 @@ const arbol = vf.compilar();
 //           compases: [], caption: '...', clave: '4', tempoInicial: null, npp: 4 }
 ```
 
-Cada nota del árbol trae su `midicent`, `altura` (nombre de nota VexFlow, p. ej. `'C/4'`), `octava`, `alteracion`, `figura`, `silencio`, `ligada` y `tuplet`. La figura es una duración VexFlow (`"4"`, `"8d"`, …); los grupos irregulares de `3`, `5` o `7` figuras se agrupan en un `Tuplet` (campo `tuplet` con el número de notas, `null` si no aplica) y las duraciones que no caben en una sola figura se encadenan con ligaduras de prolongación (`ligada: true`). Métodos públicos: `compilar()`, `claveDeMidicent(mc, preferBemol)`, `claveDeAltura()`, `duracionVexflow()`, `_redondear()`, `_figuraMasCercana()`, `_descriptor()` y `_expandirCeros()`.
+Cada nota del árbol trae su `midicent`, `altura` (nombre de nota VexFlow, p. ej. `'C/4'`), `octava`, `alteracion`, `figura`, `silencio`, `ligada` y `tuplet`. La figura es una duración VexFlow (`"4"`, `"8d"`, …); los grupos irregulares de `3`, `5`, `6`, `7`, `9` o `10`–`16` figuras se agrupan en un `Tuplet` (campo `tuplet` con el número de notas, `null` si no aplica) y las duraciones que no caben en una sola figura se encadenan con ligaduras de prolongación (`ligada: true`). En un grupo irregular de una sola figura (`3S`, `5C`, `7N`, `9F`, `10S`, …) la nota conserva esa figura y su número de tuplet (p. ej. `3S` → `"16"` con `tuplet: 3`), en lugar de aproximar el total; solo las subdivisiones sin figura explícita (p. ej. `3P`) se redondean a la figura más cercana sin tuplet. Métodos públicos: `compilar()`, `claveDeMidicent(mc, preferBemol)`, `claveDeAltura()`, `duracionVexflow()`, `_redondear()`, `_figuraMasCercana()`, `_descriptor()` y `_expandirCeros()`.
 
 La página `test/manual.html` incluye un panel **"6. Partitura VexFlow"** que pinta este árbol con VexFlow 4 (cargado **bajo demanda** desde la CDN `https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js` con el botón "Cargar VexFlow", para no bloquear la carga de la página; si no está disponible muestra "(VexFlow no cargado)") y permite redibujar, descargar PNG y SVG, e imprimir. En la partitura la secuencia completa ocupa un único compás (los compases se reservan para un futuro indicador de compás), la leyenda es `nombre — N=notas (figura=pulsosPorMin)` y las notas alteradas con `W` en AMS se escriben con bemoles; los cuartos de tono (U/V/T/R) se redondean al semitono más cercano.
 
@@ -373,7 +373,7 @@ Cobertura por archivo (`test/unit/`):
 | `midi.test.js`            | Salida SMF byte a byte: cabecera, tempo meta, ticks, silencios, PPQ 480    |
 | `zip.test.js`             | CRC-32, estructura ZIP, `bancos2zip` (un `.mid` por secuencia), `guardarZIP` |
 | `resaltador.test.js`      | `ResaltadorAMS`: segmentos, modos J0-J2, tempo, `/`, errores, `esAltura`/`esDuracion` |
-| `asuarvexflow.test.js`    | `AsuarVexflow`: claves, figuras/puntillos/ligaduras, grupos 3/5/7, división agudos/graves, silencios |
+| `asuarvexflow.test.js`    | `AsuarVexflow`: claves, figuras/puntillos/ligaduras, grupos irregulares (3/5/6/7/9/10-16), división agudos/graves, silencios |
 | `edicion.test.js`         | `clone`, `deleteSeq`/`duplicarSeq`, `deleteBanco`, métodos de fachada      |
 | `grupos.test.js`          | Paleta de grupos: nombres por defecto, nuevo/eliminar/renombrar, coordenadas, JSON `{grupos}`/legacy, ZIP/MIDI con grupos, tempo propio por pista |
 | `compas.test.js`          | Firma de tiempo: figuras/fracción/fracción agrupada, derivación LCD, validez, resaltado y modelo VexFlow |

@@ -63,7 +63,10 @@ class AMSparser{
     aplicarRedundancias(){
         log("\nAPLICANDO REDUNDANCIAS - - - - - - - - - - - - - - - - - - - -");
 
-        let gruposIrregulares = "0357".split("");
+        //los grupos irregulares son las claves de subdivs (0,3,5,6,7,9,10...16);
+        //se ordenan por longitud para matchear primero los de dos dígitos ("10".."16")
+        let gruposIrregulares = Object.keys(getDiccionarioAsuar().subdivs)
+            .sort((a, b) => b.length - a.length);
         let grupoIrregular = "";
         let ultimaOctava = "";
 
@@ -77,8 +80,17 @@ class AMSparser{
             //aplicamos redundancias de grupos irregulares
             let duracionConTodosLosDatos = this.AMSduraciones[i];
 
-            if(gruposIrregulares.includes(duracionConTodosLosDatos[0])){
-                grupoIrregular = duracionConTodosLosDatos[0];
+            //prefijo numérico más largo que sea un grupo irregular conocido
+            let prefijo = null;
+            for (const g of gruposIrregulares){
+                if (duracionConTodosLosDatos.startsWith(g)){
+                    prefijo = g;
+                    break;
+                }
+            }
+
+            if(prefijo !== null){
+                grupoIrregular = prefijo;
             }else {
                 if(grupoIrregular=="0"){
                 }else{

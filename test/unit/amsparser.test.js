@@ -41,6 +41,19 @@ test('aplica redundancia de grupo irregular', () => {
     assert.deepStrictEqual(duraciones, ['3N', '3F']);
 });
 
+test('aplica redundancia de grupos irregulares nuevos (6/9/10-16)', () => {
+    const {duraciones} = parse('4C 6C 4E F');             // 6 se propaga
+    assert.deepStrictEqual(duraciones, ['6C', '6F']);
+    const {duraciones: d2} = parse('4C 9F 4E S');         // 9 se propaga
+    assert.deepStrictEqual(d2, ['9F', '9S']);
+    const {duraciones: d3} = parse('4C 10S 4E F');        // prefijo de dos dígitos
+    assert.deepStrictEqual(d3, ['10S', '10F']);
+    const {duraciones: d4} = parse('4C 16M 4E F');
+    assert.deepStrictEqual(d4, ['16M', '16F']);
+    const {duraciones: d5} = parse('4C 6C 4E 0N 5E F');   // "0" anula el grupo
+    assert.deepStrictEqual(d5, ['6C', '0N', 'F']);
+});
+
 test('J1 fija un ritmo constante', () => {
     const {alturas, duraciones} = parse('J1 S 4C 4E 4G');
     assert.deepStrictEqual(alturas, ['4C', '4E', '4G']);

@@ -32,9 +32,10 @@ const {getDiccionarioAsuar} = require('../diccionarioAsuar.js');
  *    mismo largo (una entrada por evento) para quedar alineadas en el tiempo.
  *  - La duración AMS se convierte a figuras VexFlow: exacta, con puntillo
  *    ("4d"/"4dd") o una cadena de figuras ligadas (ej. "NB" -> "2"+"4").
- *  - Las subdivisiones 3/5/7 (tresillo/quintillo/…) agrupan las figuras con
- *    tuplet; las de una sola figura se aproximan a la figura simple o con
- *    puntillo más cercana. */
+ *  - Las subdivisiones (3/5/7, y las de una sola figura 6/9/10...16: tresillo,
+ *    quintillo, seisillo, septillo 7:8, nonillo…) agrupan las figuras con
+ *    tuplet; las de una sola figura conservan la figura escrita (ej. "3S" ->
+ *    semicorchea con tresillo) y se marcan con el número del grupo irregular. */
 class AsuarVexflow{
 
     /** @param {Object} secuencia SecuenciaAsuar (o cualquier objeto con
@@ -53,7 +54,7 @@ class AsuarVexflow{
         for (const f of Object.keys(dict.ritmos)){
             this.base[f] = dict.ritmos[f] / 1000;
         }
-        this.subdivs = dict.subdivs;   // {"0":1,"3":0.6666,"5":.8,"7":0.875}
+        this.subdivs = dict.subdivs;   // {"0":1,"3":0.6666,"5":.8,"6":.6666,"7":1.1429,"9":.8889,"10".."16":(n-1)/n}
 
         this.duracionDe = {L:"0", R:"1", B:"2", N:"4", C:"8", S:"16", F:"32", M:"64"};
         this.figurasBase = [
@@ -163,9 +164,17 @@ class AsuarVexflow{
 
         let i = 0;
         let numTuplet = 0;
-        if ("0357".includes(dur[0])){
-            numTuplet = parseInt(dur[0], 10);
-            i = 1;
+        //prefijo numérico más largo que sea una subdivisión conocida ("3", "10".."16")
+        const run = /^\d+/.exec(dur);
+        if (run){
+            for (let len = Math.min(2, run[0].length); len >= 1; len--){
+                const cand = run[0].slice(0, len);
+                if (this.subdivs[cand] !== undefined){
+                    numTuplet = parseInt(cand, 10);
+                    i = cand.length;
+                    break;
+                }
+            }
         }
         const chars = dur.slice(i);
         if (chars === ""){
@@ -191,9 +200,19 @@ class AsuarVexflow{
         }
         if (numTuplet > 0) total *= this.subdivs[numTuplet];
 
-        //tuplet de una sola figura: figura simple/puntillo más cercana
+        //tuplet de una sola figura: la figura se escribe tal cual, agrupada bajo
+        // el número del grupo irregular (ej. "3S" -> semicorchea con "3").
+        if (numTuplet > 0 && figuras.length === 1){
+            return {
+                figuras: this._expandirCeros(figuras.map(c => ({duracion: this.duracionDe[c], ligada: false}))),
+                tuplet: numTuplet,
+            };
+        }
+
+        //subdivisión sin figura explícita (p. ej. "3P"): figura más cercana al total
         if (numTuplet > 0){
-            return {figuras: [this._figuraMasCercana(total)], tuplet: null};
+            const fig = Number.isFinite(total) ? this._figuraMasCercana(total) : {duracion: "1", ligada: false};
+            return {figuras: [fig], tuplet: null};
         }
         return {figuras: this._expandirCeros(this._redondear(total)), tuplet: null};
     }

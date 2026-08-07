@@ -32,8 +32,9 @@ class ResaltadorAMS{
         this.notas = Object.keys(dict.notas).join("").replace("R", "");
         this.alteraciones = Object.keys(dict.alteraciones).join("");
         this.figuras = Object.keys(dict.ritmos).join("").replace("P", "");
-        this.grupos = Object.keys(dict.subdivs).join("");
-        this.regexDuracion = new RegExp("^[" + this.grupos + "]?[" + this.figuras + "]+P*$");
+        //grupos irregulares en una alternancia ordenada por longitud ("16"|"15"|...|"10"|"9"|...)
+        this.grupos = Object.keys(dict.subdivs).sort((a, b) => b.length - a.length).join("|");
+        this.regexDuracion = new RegExp("^(?:" + this.grupos + ")?[" + this.figuras + "]+P*$");
     }
 
     /** Resalta un texto AMS.
@@ -170,7 +171,7 @@ class ResaltadorAMS{
         return true;
     }
 
-    /** ¿Es una duración válida? Grupo irregular opcional (0/3/5/7) + al menos
+    /** ¿Es una duración válida? Grupo irregular opcional (0/3/5/6/7/9/10...16) + al menos
      *  una figura (L R B N C S F M) y puntos "P" opcionales. */
     esDuracion(token){
         if (typeof token !== "string") return false;

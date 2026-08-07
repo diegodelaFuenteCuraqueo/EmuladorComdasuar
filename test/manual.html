@@ -100,7 +100,8 @@
 <p class="sub">Parser AMS, secuencias, bancos como paleta de grupos × secuencias, heurísticos,
 reproducción WebAudio, exportación MIDI (ZIP con un .mid por secuencia, etiquetados
 <code>&lt;secuencia&gt; - &lt;grupo&gt;.mid</code>) y partitura VexFlow (pentagrama único, con clave de sol
-o de fa según el promedio de alturas de la secuencia, en un compás por secuencia).
+o de fa según el promedio de alturas de la secuencia, beams agrupados por la métrica
+de la firma de tiempo AMS y tuplets numerados, en un compás por secuencia).
 Cargado vía <code>npm run dev</code> (http://localhost:3000); con <code>file://</code> el bundle <code>comdasuar.js</code> debe estar junto a este archivo y no se muestran las partituras de ejemplo.
 La partitura VexFlow se carga desde CDN bajo demanda y requiere conexión a internet.</p>
 
@@ -266,7 +267,13 @@ La partitura VexFlow se carga desde CDN bajo demanda y requiere conexión a inte
   <p>La secuencia actual se dibuja como partitura de <b>pentagrama único</b>: si el
   promedio de alturas queda por debajo de <b>La3</b> se usa <b>clave de fa</b>; en o
   por encima de La3, <b>clave de sol</b>. Toda la secuencia va en un solo compás,
-  sin líneas divisorias ni armadura. VexFlow se carga desde la CDN <b>bajo demanda</b>
+  sin líneas divisorias ni armadura. Las corcheas y figuras menores se agrupan con
+  <b>beams</b> siguiendo la métrica de la firma de tiempo AMS cuando existe
+  (agrupación explícita como <code>[3+2/8]</code>, o la convención para 2/x, 3/x, 4/x
+  y compuestas 6/x, 9/x, 12/x; sin firma o impares sin agrupación → 4/4), y los
+  grupos irregulares (3, 5, 6, 7, 9, 10–16) se dibujan con su número y su
+  proporción (p. ej. un "7" sobre 7 fusas que ocupan el tiempo de 8). VexFlow se carga desde la CDN
+  <b>bajo demanda</b>
   (botón de abajo); sin red esta sección queda deshabilitada.</p>
   <div class="fila">
     <button id="btnCargarVexflow">Cargar VexFlow</button>
@@ -285,7 +292,7 @@ La partitura VexFlow se carga desde CDN bajo demanda y requiere conexión a inte
 <script>
 "use strict";
 
-const {EmuladorComdasuar, Reproductor, MIDIexport, ResaltadorAMS, AsuarVexflow} = window.comdasuar;
+const {EmuladorComdasuar, Reproductor, MIDIexport, ResaltadorAMS, AsuarVexflow, getDiccionarioAsuar} = window.comdasuar;
 const comdasuar = new EmuladorComdasuar();
 let reproductor = null;
 const resaltador = new ResaltadorAMS();
@@ -685,28 +692,152 @@ function cargarVexflow(){
     return vexflowPromesa;
 }
 
+/** Cuartos de negra de una duración VexFlow ("4", "8d", "16", …). */
+function duracionAquartos(duracionVf){
+    const m = /^(\d+)(d+)?$/.exec(String(duracionVf || ''));
+    if (!m) return 1;
+    const base = {1: 4, 2: 2, 4: 1, 8: 0.5, 16: 0.25, 32: 0.125, 64: 0.0625}[parseInt(m[1], 10)];
+    if (base === undefined) return 1;
+    const puntos = m[2] ? m[2].length : 0;
+    let dot = base * 0.5;
+    let total = base;
+    for (let k = 0; k < puntos; k++){ total += dot; dot /= 2; }
+    return total;
+}
+
+/** Longitudes de grupo (en cuartos) para la agrupación de beams, derivadas de la
+ *  firma de tiempo AMS. Sin firma → 4/4. Una firma sin agrupación explícita usa la
+ *  convención: simples (2/x, 3/x, 4/x) en tantos grupos como el numerador, compuestas
+ *  (6/x, 9/x, 12/x…) en grupos de 3, e impares (5/x, 7/x, 11/x…) → 4/4. */
+function gruposDeCompas(compas){
+    if (!compas) return [1, 1, 1, 1];
+    if (compas.agrupacion && compas.agrupacion.length){
+        return compas.agrupacion.map(a => a * (4 / compas.denominador));
+    }
+    const unit = 4 / compas.denominador;
+    const n = compas.numerador;
+    if (n === 2 || n === 3 || n === 4) return new Array(n).fill(unit);
+    if (n % 3 === 0 && n >= 6) return new Array(n / 3).fill(unit * 3);
+    return [1, 1, 1, 1];
+}
+
+/** Detecta los grupos de tuplet en la secuencia de descriptores. Un evento
+ *  multi-figura (3NS, 5NCS) es un tuplet completo (se agrupa por `evento`); las
+ *  subdivisiones de una sola figura (3S, 3N) se agrupan de a `num_notes` eventos
+ *  consecutivos con el mismo número. Devuelve {tuplets, grupoPorIndice}, donde
+ *  grupoPorIndice[i] es el id del grupo de tuplet del descriptor i (o null).
+ *  `notes_occupied` sale de subdivs[n] (ej. 3->2, 5->4, 6->4, 7->8, 9->8): la
+ *  proporción "n figuras en el tiempo de notes_occupied". */
+function opcionesTuplet(n){
+    const subdivs = getDiccionarioAsuar().subdivs;
+    const factor = subdivs[n] !== undefined ? subdivs[n] : (n - 1) / n;
+    return {num_notes: n, notes_occupied: Math.max(1, Math.round(n * factor))};
+}
+
+function agruparTuplets(descriptores, notas){
+    const tuplets = [];
+    const grupoPorIndice = new Array(descriptores.length).fill(null);
+    let id = 0;
+    let i = 0;
+    while (i < descriptores.length){
+        const d = descriptores[i];
+        if (!d.tuplet){ i++; continue; }
+        const n = d.tuplet;
+        const esMulti = i + 1 < descriptores.length &&
+            descriptores[i + 1].evento === d.evento && descriptores[i + 1].tuplet === n;
+        if (esMulti){
+            const j = i;
+            while (i < descriptores.length && descriptores[i].evento === d.evento && descriptores[i].tuplet === n){
+                grupoPorIndice[i] = id;
+                i++;
+            }
+            tuplets.push(new Vex.Flow.Tuplet(notas.slice(j, i), opcionesTuplet(n)));
+            id++;
+            continue;
+        }
+        const j = i;
+        let cnt = 0;
+        while (i < descriptores.length && cnt < n){
+            const dk = descriptores[i];
+            if (dk.tuplet !== n || dk.duracion !== d.duracion) break;
+            const kMulti = i + 1 < descriptores.length &&
+                descriptores[i + 1].evento === dk.evento && descriptores[i + 1].tuplet === n;
+            if (kMulti) break;
+            grupoPorIndice[i] = id;
+            i++;
+            cnt++;
+        }
+        tuplets.push(new Vex.Flow.Tuplet(notas.slice(j, i), opcionesTuplet(n)));
+        id++;
+    }
+    return {tuplets, grupoPorIndice};
+}
+
+/** Agrupa los beams: corridas de ≥2 notas beamables (corchea o menor, sin
+ *  silencios) dentro de un mismo grupo métrico (patrón de gruposDeCompas repetido).
+ *  Un tuplet es atómico: no se corta por métrica dentro de él (así las subdivisiones
+ *  de una sola figura, ej. tres 3S, se ven beamadas bajo su "3") y ningún beam
+ *  cruza sus límites.
+ *  @private */
+function agruparBeams(descriptores, notas, compas, grupoPorIndice){
+    const grupos = gruposDeCompas(compas);
+    const beams = [];
+    let pos = 0;
+    let gi = 0;
+    let grupoFin = grupos[0];
+    let giAnterior = null;
+    let inicio = null;
+
+    const cortar = (hasta) => {
+        if (inicio !== null && hasta - inicio >= 2){
+            beams.push(new Vex.Flow.Beam(notas.slice(inicio, hasta)));
+        }
+        inicio = null;
+    };
+
+    for (let i = 0; i < descriptores.length; i++){
+        const d = descriptores[i];
+        const q = duracionAquartos(d.duracion);
+        while (pos >= grupoFin - 1e-9){
+            gi++;
+            grupoFin += grupos[gi % grupos.length];
+        }
+        const tAnterior = i > 0 ? grupoPorIndice[i - 1] : null;
+        const tActual = grupoPorIndice[i];
+        const mismoTuplet = tActual !== null && tActual === tAnterior;
+        const beamable = !d.silencio && q <= 0.5;
+        const cruzaLimite = giAnterior !== null && gi !== giAnterior;
+
+        if (!beamable || tActual !== tAnterior || (!mismoTuplet && cruzaLimite)){
+            cortar(i);
+            if (beamable) inicio = i;
+        } else if (inicio === null){
+            inicio = i;
+        }
+        giAnterior = gi;
+        pos += q;
+    }
+    cortar(descriptores.length);
+    return beams;
+}
+
 /** Convierte los descriptores del modelo (AsuarVexflow.compilar) en notas,
- *  agrupando los tuplets. Devuelve {notas, tuplets, voice, descriptores}. */
-function construirVozVexflow(descriptores, clef){
+ *  agrupando los tuplets y los beams. Devuelve {notas, tuplets, beams, voice, descriptores}. */
+function construirVozVexflow(descriptores, clef, compas){
     const notas = descriptores.map(d => d.silencio
         ? new Vex.Flow.StaveNote({clef: clef, keys: ['b/4'], duration: d.duracion + 'r'})
         : new Vex.Flow.StaveNote({clef: clef, keys: d.claves, duration: d.duracion}));
-    const tuplets = [];
-    let i = 0;
-    while (i < descriptores.length){
-        if (descriptores[i].tuplet){
-            const j = i;
-            const n = descriptores[i].tuplet;
-            while (i < descriptores.length && descriptores[i].tuplet === n) i++;
-            tuplets.push(new Vex.Flow.Tuplet(notas.slice(j, i), {num_notes: n}));
-        } else {
-            i++;
-        }
-    }
+    const {tuplets, grupoPorIndice} = agruparTuplets(descriptores, notas);
     const voice = new Vex.Flow.Voice({num_beats: 4, beat_value: 4});
     voice.setMode(Vex.Flow.Voice.Mode.SOFT);
     voice.addTickables(notas);
-    return {notas: notas, tuplets: tuplets, voice: voice, descriptores: descriptores};
+    return {
+        notas: notas,
+        tuplets: tuplets,
+        beams: agruparBeams(descriptores, notas, compas, grupoPorIndice),
+        voice: voice,
+        descriptores: descriptores,
+    };
 }
 
 /** Fusiona las dos voces paralelas del modelo (agudos/graves) en una sola lista
@@ -758,11 +889,12 @@ function dibujarPartitura(backend, contenedor, ancho){
 
     if (compas){
         const fundidas = fundirVoces(compas.voces);
-        const voz = construirVozVexflow(fundidas, clef);
+        const voz = construirVozVexflow(fundidas, clef, modelo.compas);
         new Vex.Flow.Formatter().joinVoices([voz.voice]).format([voz.voice], ancho - 80);
 
         st.setContext(ctx).draw();
         voz.voice.draw(ctx, st);
+        for (const b of voz.beams) b.setContext(ctx).draw();
         for (const t of voz.tuplets) t.setContext(ctx).draw();
 
         for (let k = 0; k < voz.descriptores.length - 1; k++){

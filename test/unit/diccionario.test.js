@@ -33,10 +33,21 @@ test('dur2ms aplica puntillos (mitad de la figura anterior)', () => {
 });
 
 test('dur2ms aplica grupos irregulares (subdivisiones)', () => {
-    assert.ok(Math.abs(AMS.dur2ms('3N') - 666.6) < 0.01);
+    assert.ok(Math.abs(AMS.dur2ms('3N') - 666.66) < 0.01);
     assert.ok(Math.abs(AMS.dur2ms('5N') - 800) < 0.01);
-    assert.ok(Math.abs(AMS.dur2ms('7N') - 875) < 0.01);
+    assert.ok(Math.abs(AMS.dur2ms('7N') - 1142.86) < 0.01);
     assert.strictEqual(AMS.dur2ms('0N'), 1000);
+});
+
+test('dur2ms: subdivisiones nuevas (6/9/10-16)', () => {
+    assert.ok(Math.abs(AMS.dur2ms('6N') - 666.66) < 0.01);      // doble tresillo
+    assert.ok(Math.abs(AMS.dur2ms('9N') - 888.88) < 0.01);     // 9 en tiempo de 8
+    assert.ok(Math.abs(AMS.dur2ms('10N') - 900) < 0.01);       // 10 en tiempo de 9
+    assert.ok(Math.abs(AMS.dur2ms('16N') - 937.5) < 0.01);     // 16 en tiempo de 15
+    assert.ok(Math.abs(AMS.dur2ms('10S') - 225) < 0.01);
+    assert.ok(Math.abs(AMS.dur2ms('16M') - 58.59375) < 0.01);
+    assert.ok(Math.abs(AMS.dur2ms('7F') - 142.8575) < 0.01);   // 7:8 (negra dividida en 7)
+    assert.ok(Math.abs(AMS.dur2ms('9F') - 111.11) < 0.01);
 });
 
 test('alt2mn convierte octava+nota', () => {
